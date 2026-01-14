@@ -1,6 +1,6 @@
 # MuCALD_SplitFed
 
-This is the official code repository of the paper **"{MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation."**
+This is the official code repository of the paper **"MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation."**
 
 ---
 

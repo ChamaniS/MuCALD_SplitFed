@@ -1,6 +1,6 @@
 # MuCALD_SplitFed
 
-This is the official code repository of the paper **"MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Medical Image Segmentation."**
+This is the official code repository of the paper **"{MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation."**
 
 ---
 
@@ -32,7 +32,7 @@ MuCALD-SplitFed has the following key contributions:
 3. **Domain-Adversarial Causal Alignment (DACA)**  
    - Gradient Reversal Layer (GRL) and domain discriminator for cross-client/domain invariance and reduced domain-specific leakage.
 
-4. **Empirical validation on 5 clients / datasets**  
+4. **Empirical validation on 5 clients/ datasets**  
    - Blastocysts, HAM10K, FHPsAOPMSB, MosMed, and Kvasir-SEG, demonstrating improved segmentation metrics and degraded reconstruction quality at split points compared to Baseline SplitFed and strong personalized / multi-task FL baselines.
 
 ---

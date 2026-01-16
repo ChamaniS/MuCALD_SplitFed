@@ -51,11 +51,11 @@ pip install -r requirements.txt
 ```
 ## Datasets
 We used following 5 datasets.
-1. Blastocyst dataset
-2. HAM10K dataset
-3. FHPsAOPMSB dataset
-4. Mosmed Dataset
-5. Kvasir-SEG dataset 
+1. Blastocyst dataset [1]
+2. HAM10K dataset [2]
+3. FHPsAOPMSB dataset [3]
+4. Mosmed Dataset [4]
+5. Kvasir-SEG dataset [5]
 
 ## Model Components
 Following is the system architecture. 
@@ -66,4 +66,28 @@ The proposed architecture contains 3 major components.
 1. Causal Representation and Diffusion Module (CRDM)
 2. Domain-Adversarial Causal Alignment (DACA)
 
+## References
+[1] Lockhart, Lisette, Parvaneh Saeedi, Jason Au, and Jon Havelock. "Multi-label classification for automatic human blastocyst grading with severely imbalanced data." In 2019 IEEE 21st International Workshop on Multimedia Signal Processing (MMSP), pp. 1-6. IEEE, 2019.
+
+[1] Tschandl, Philipp, Cliff Rosendahl, and Harald Kittler. "The HAM10000 dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions." Scientific data 5, no. 1 (2018): 1-9.
+
+[3] Yaosheng Lu, Mengqiang Zhou, Dengjiang Zhi, Minghong Zhou, Xiaosong Jiang, Ruiyu Qiu, Zhanhong Ou, Huijin Wang, Di Qiu, Mei Zhong, et al., “The jnu-ifm dataset for segmenting pubic symphysis-fetal head,” Data Br, vol. 41, pp. 107904, 2022.
+
+[4] Sergey P Morozov et al., “Mosmed data: data set of 1110 chest ct scans performed during the covid-19 epidemic,” Digit. Di-agn., vol. 1, no. 1, pp. 49–59, 2020.
+
+[5] ebesh Jha et al., “Kvasir-seg: A segmented polyp dataset,” in Proc. MMM. Springer, 2020, pp. 451–462.
+
+---
+
 ## Citation
+
+If you find this project useful in your research, please cite our paper:
+
+``
+@article{Anonymous_2026,
+  title={MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation},
+  author={Anonymous},
+  journal={Proceeding of XXX},
+  year={2025}
+}
+``

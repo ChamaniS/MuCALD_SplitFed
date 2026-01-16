@@ -50,9 +50,20 @@ Install the requirements
 pip install -r requirements.txt
 ```
 ## Datasets
+We used following 5 datasets.
+1. Blastocyst dataset
+2. HAM10K dataset
+3. FHPsAOPMSB dataset
+4. Mosmed Dataset
+5. Kvasir-SEG dataset 
 
 ## Model Components
-Causal Representation and Diffusion Module (CRDM)
-Domain-Adversarial Causal Alignment (DACA)
+Following is the system architecture. 
+![Left: Proposed MuCALD SplitFed (CS-FE to SS split point). Right: Causal relationships discovered using Notears-MLP for Neural SCM modeling. A symmetric configuration operates at the SS to CS-BE split point.](Figures/Mucald_architecture.png)
+
+
+The proposed architecture contains 3 major components.
+1. Causal Representation and Diffusion Module (CRDM)
+2. Domain-Adversarial Causal Alignment (DACA)
 
 ## Citation

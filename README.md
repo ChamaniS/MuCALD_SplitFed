@@ -83,11 +83,11 @@ The proposed architecture contains 3 major components.
 
 If you find this project useful in your research, please cite our paper:
 
-``
+```bibtex
 @article{Anonymous_2026,
   title={MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation},
   author={Anonymous},
   journal={Proceeding of XXX},
   year={2025}
 }
-``
+```bibtex

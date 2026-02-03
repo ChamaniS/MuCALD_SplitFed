@@ -135,7 +135,7 @@ def main():
         ToTensorV2(),
     ])
     '''
-    dataDir = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_federated/"
+    dataDir = LINK_TO_DATA_PATH
     client_dirs = [f"client{i + 1}" for i in range(NUM_CLIENTS)]
     client_train_loaders, client_val_loaders = [], []
 

@@ -25,13 +25,13 @@ from skimage.metrics import structural_similarity as sk_ssim
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/BS_FedEM.txt"
+output_file = "XXXXX/causalenv/BS_FedEM.txt"
 sys.stdout = open(output_file, "w")
 
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 5
 COMM_ROUNDS = 24
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 
 M_COMPONENTS = 3
 LR_COMPONENT = 1e-4

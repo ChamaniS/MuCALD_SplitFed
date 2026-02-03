@@ -174,7 +174,7 @@ def train_notears_mlp(
 
 if __name__ == "__main__":
     # === Hardcoded settings ===
-    csv_path = "C:/Users/csj5/Projects/Causal-proxy/Proxy_variables_dir/fetus_No_location.csv"   # <-- change this to your CSV file
+    csv_path = "XXXXX/Projects/Causal-proxy/Proxy_variables_dir/fetus_No_location.csv"   # <-- change this to your CSV file
     hidden_units = 16
     batch_size = 512
     learning_rate = 1e-3

@@ -33,7 +33,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 1
 COMM_ROUNDS = 24
-DATA_PATH="C:/Users/csj5/Projects/Data/MTS2"
+DATA_PATH="XXXXX/Projects/Data/MTS2"
 
 test_iou_wbg_all = {i: [] for i in range(NUM_CLIENTS)}
 test_iou_nbg_all = {i: [] for i in range(NUM_CLIENTS)}

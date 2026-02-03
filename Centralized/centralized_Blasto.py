@@ -144,12 +144,12 @@ def main():
     dataset_class = EmbryoDataset
     NUM_CLASSES = 5
 
-    TRAIN_IMG_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/train_imgs"
-    TRAIN_MASK_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/train_masks"
-    VAL_IMG_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/val_imgs"
-    VAL_MASK_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/val_masks"
-    TEST_IMG_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/test_imgs"
-    TEST_MASK_DIR = "C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/test_masks"
+    TRAIN_IMG_DIR = LINK_TO_DATA_PATH
+    TRAIN_MASK_DIR = LINK_TO_DATA_PATH
+    VAL_IMG_DIR = LINK_TO_DATA_PATH
+    VAL_MASK_DIR = LINK_TO_DATA_PATH
+    TEST_IMG_DIR = LINK_TO_DATA_PATH
+    TEST_MASK_DIR = LINK_TO_DATA_PATH
 
     val_transform = A.Compose([
             A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),
@@ -191,7 +191,7 @@ def main():
         val_loss, val_acc, val_iou_with_bg, val_iou_no_bg, val_iou_classes = val_results
 
         def print_results(mode, loss, acc, iou_bg, iou_no_bg, iou_classes):
-            print(f"\n[{mode}] Loss: {loss:.4f} | Acc: {acc:.2f}% | IoU(w/ bg): {iou_bg:.4f} | IoU(no bg): {iou_no_bg:.4f}")
+            print(f"\n[{mode}] Loss: {loss:.4f} | AcXXXXX/ {acc:.2f}% | IoU(w/ bg): {iou_bg:.4f} | IoU(no bg): {iou_no_bg:.4f}")
             print("Per-Class IoU:", " | ".join([f"C{i}: {iou_classes[i]:.4f}" for i in range(len(iou_classes))]))
 
         print_results("TRAIN", train_loss, train_acc, train_iou_with_bg, train_iou_no_bg, train_iou_classes)

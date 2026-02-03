@@ -145,12 +145,12 @@ def main():
     dataset_class = CVCDataset
     NUM_CLASSES = 2
 
-    TRAIN_IMG_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/train/images"
-    TRAIN_MASK_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/train/masks"
-    VAL_IMG_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/val/images"
-    VAL_MASK_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/val/masks"
-    TEST_IMG_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/test/images"
-    TEST_MASK_DIR = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG/test/masks"
+    TRAIN_IMG_DIR = LINK_TO_DATA_PATH
+    TRAIN_MASK_DIR = LINK_TO_DATA_PATH
+    VAL_IMG_DIR = LINK_TO_DATA_PATH
+    VAL_MASK_DIR = LINK_TO_DATA_PATH
+    TEST_IMG_DIR = LINK_TO_DATA_PATH
+    TEST_MASK_DIR = LINK_TO_DATA_PATH
 
     val_transform = A.Compose([
             A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),

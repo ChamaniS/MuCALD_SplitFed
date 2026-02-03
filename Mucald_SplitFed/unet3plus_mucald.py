@@ -28,7 +28,7 @@ from proxy_tables import ProxyTable
 from dataset_wrappers import WithFilenames
 from models.z_prior import ZPrior
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/mucald_unet3plus.txt"
+output_file = "XXXXX/causalenv/mucald_unet3plus.txt"
 sys.stdout = open(output_file, "w")
 from torch.utils.data import Subset
 import copy
@@ -143,8 +143,8 @@ beta = cosine_beta_schedule(T, device=torch.device(DEVICE))
 alpha = 1.0 - beta
 alpha_cum = torch.cumprod(alpha, dim=0).to(DEVICE)
 
-PROXY_DATA_PATH = "/lustre06/project/6008975/csj5/causalenv/Proxy_variables_dir/Final/"
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+PROXY_DATA_PATH = "XXXXX/causalenv/Proxy_variables_dir/Final/"
+DATA_PATH = LINK_TO_DATA_PATH
 
 os.makedirs("BestModels", exist_ok=True)
 os.makedirs("Outputs", exist_ok=True)

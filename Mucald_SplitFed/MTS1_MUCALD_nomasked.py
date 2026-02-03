@@ -89,8 +89,8 @@ beta = cosine_beta_schedule(T, device=torch.device(DEVICE))
 alpha = 1.0 - beta
 alpha_cum = torch.cumprod(alpha, dim=0).to(DEVICE)
 
-DATA_PATH = "C:/Users/csj5/Projects/Data/MTS2"
-PROXY_DATA_PATH = "C:/Users/csj5/Projects/Causal-proxy/Proxy_variables_dir/Final/"
+DATA_PATH = "XXXXX/Projects/Data/MTS2"
+PROXY_DATA_PATH = "XXXXX/Projects/Causal-proxy/Proxy_variables_dir/Final/"
 
 os.makedirs("BestModels", exist_ok=True)
 os.makedirs("Outputs", exist_ok=True)

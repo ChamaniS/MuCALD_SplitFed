@@ -2,8 +2,32 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="6a7711d7-74fe-4cf8-a889-3cd0bcb368d7" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/Kvasir_cen_local.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/Kvasir_cen_local.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/Mosmed_locally_split.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/Mosmed_locally_split.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_Blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_Blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_HAM.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_HAM.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_mosmed.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_mosmed.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_splitfed_kvasir.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_splitfed_kvasir.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/SWINunet_DS_blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/SWINunet_DS_blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/Unet_SplitFed_Blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/Unet_SplitFed_Blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/splitfed_blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/splitfed_blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Baseline_SplitFed/splitfed_kvasir.py" beforeDir="false" afterPath="$PROJECT_DIR$/Baseline_SplitFed/splitfed_kvasir.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Centralized/centralized_Blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Centralized/centralized_Blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Centralized/centralized_HAM.py" beforeDir="false" afterPath="$PROJECT_DIR$/Centralized/centralized_HAM.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Centralized/centralized_kvasir.py" beforeDir="false" afterPath="$PROJECT_DIR$/Centralized/centralized_kvasir.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Centralized/centralized_mosmed.py" beforeDir="false" afterPath="$PROJECT_DIR$/Centralized/centralized_mosmed.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Mucald_SplitFed/mucald_final_unet.py" beforeDir="false" afterPath="$PROJECT_DIR$/Mucald_SplitFed/mucald_final_unet.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Mucald_SplitFed/sslddmexo_modi2.py" beforeDir="false" afterPath="$PROJECT_DIR$/Mucald_SplitFed/sslddmexo_modi2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Mucald_SplitFed/swin_mucald.py" beforeDir="false" afterPath="$PROJECT_DIR$/Mucald_SplitFed/swin_mucald.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Mucald_SplitFed/unet3plus_DS_blasto.py" beforeDir="false" afterPath="$PROJECT_DIR$/Mucald_SplitFed/unet3plus_DS_blasto.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Mucald_SplitFed/unet3plus_mucald.py" beforeDir="false" afterPath="$PROJECT_DIR$/Mucald_SplitFed/unet3plus_mucald.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Multi_Task_FL/BS_FedEM.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Multi_Task_FL/BS_FedEM.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedBN.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedBN.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedBone.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedBone.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedPer.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedPer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedProx.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedProx.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedRep.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_FedRep.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_SCAFFOLD.py" beforeDir="false" afterPath="$PROJECT_DIR$/SoTA_Personalized_methods/BS_SCAFFOLD.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -13,19 +37,110 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/splitfed_kvasir.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="221">
+              <caret line="130" column="31" selection-start-line="130" selection-start-column="14" selection-end-line="130" selection-end-column="31" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINunet_DS_blasto.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-3417" />
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_Blasto.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-2448" />
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_HAM.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="68">
+              <caret line="133" column="31" lean-forward="true" selection-start-line="133" selection-start-column="14" selection-end-line="133" selection-end-column="31" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_splitfed_kvasir.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-2193" />
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_mosmed.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="136">
+              <caret line="137" column="31" selection-start-line="137" selection-start-column="14" selection-end-line="137" selection-end-column="31" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Centralized/centralized_Blasto.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="170">
+              <caret line="145" selection-start-line="145" selection-end-line="151" selection-end-column="37" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Centralized/centralized_HAM.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="221">
+              <caret line="145" selection-start-line="145" selection-end-line="145" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/Centralized/centralized_kvasir.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="136">
+              <caret line="143" lean-forward="true" selection-start-line="143" selection-end-line="143" />
+            </state>
+          </provider>
+        </entry>
+      </file>
       <file pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/README.md">
-          <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
-            <state split_layout="SPLIT">
-              <first_editor relative-caret-position="79">
-                <caret line="41" selection-start-line="41" selection-end-line="50" selection-end-column="3" />
-              </first_editor>
-              <second_editor />
+        <entry file="file://$PROJECT_DIR$/Centralized/centralized_mosmed.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="238">
+              <caret line="152" column="37" selection-start-line="152" selection-start-column="37" selection-end-line="152" selection-end-column="37" />
             </state>
           </provider>
         </entry>
       </file>
     </leaf>
+  </component>
+  <component name="FindInProjectRecents">
+    <findStrings>
+      <find>&quot;/lustre06/project/6008975/csj5/MTS2&quot;</find>
+      <find>&quot;/lustre06/project/6008975/csj5/MTS2&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/federated/&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/kvasir-seg/federated/kvasir-seg-federated/Kvasir-SEG/&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_uniform_federated_new/HAM_uniform_federated_new/&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_federated/&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/train_imgs&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/train_masks&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/val_imgs&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/val_masks&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/test_imgs&quot;</find>
+      <find>&quot;C:/Users/csj5/Projects/Data/BlastocystDATA/datafed/data/shuffled/centralized/set3/test_masks&quot;</find>
+    </findStrings>
+    <replaceStrings>
+      <replace>LINK_TO_DATA_PATH</replace>
+    </replaceStrings>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -34,14 +149,24 @@
     <option name="CHANGED_PATHS">
       <list>
         <option value="$PROJECT_DIR$/README.md" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/Kvasir_cen_local.py" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/Mosmed_locally_split.py" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/splitfed_blasto.py" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/splitfed_kvasir.py" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_HAM.py" />
+        <option value="$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_mosmed.py" />
+        <option value="$PROJECT_DIR$/Centralized/centralized_Blasto.py" />
+        <option value="$PROJECT_DIR$/Centralized/centralized_HAM.py" />
+        <option value="$PROJECT_DIR$/Centralized/centralized_kvasir.py" />
+        <option value="$PROJECT_DIR$/Centralized/centralized_mosmed.py" />
       </list>
     </option>
   </component>
   <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="21" />
-    <option name="y" value="64" />
-    <option name="width" value="726" />
-    <option name="height" value="640" />
+    <option name="x" value="26" />
+    <option name="y" value="80" />
+    <option name="width" value="908" />
+    <option name="height" value="800" />
   </component>
   <component name="ProjectView">
     <navigator proportions="" version="1">
@@ -54,6 +179,11 @@
             <path>
               <item name="MuCALD_SplitFed" type="b2602c69:ProjectViewProjectNode" />
               <item name="MuCALD_SplitFed" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="MuCALD_SplitFed" type="b2602c69:ProjectViewProjectNode" />
+              <item name="MuCALD_SplitFed" type="462c0819:PsiDirectoryNode" />
+              <item name="Centralized" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -92,10 +222,10 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <frame x="-7" y="-7" width="1550" height="838" extended-state="6" />
     <editor active="true" />
     <layout>
-      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.119072706" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.14937212" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
@@ -106,7 +236,7 @@
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="6" />
       <window_info anchor="bottom" id="Version Control" order="7" weight="0.3288889" />
-      <window_info anchor="bottom" id="Terminal" order="8" visible="true" weight="0.38444445" />
+      <window_info anchor="bottom" id="Terminal" order="8" visible="true" weight="0.21815519" />
       <window_info anchor="bottom" id="Event Log" order="9" side_tool="true" />
       <window_info anchor="bottom" id="Python Console" order="10" weight="0.3288889" />
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
@@ -125,10 +255,95 @@
     <entry file="file://$PROJECT_DIR$/README.md">
       <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
         <state split_layout="SPLIT">
-          <first_editor relative-caret-position="79">
-            <caret line="41" selection-start-line="41" selection-end-line="50" selection-end-column="3" />
+          <first_editor relative-caret-position="-476">
+            <caret line="2" selection-start-line="2" selection-end-line="4" selection-end-column="3" />
           </first_editor>
           <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/Kvasir_cen_local.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-8192">
+          <caret line="29" column="31" selection-start-line="29" selection-start-column="31" selection-end-line="29" selection-end-column="31" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/Mosmed_locally_split.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="34">
+          <caret line="29" column="29" lean-forward="true" selection-start-line="29" selection-start-column="12" selection-end-line="29" selection-end-column="29" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/splitfed_blasto.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-901">
+          <caret line="135" column="54" lean-forward="true" selection-start-line="135" selection-start-column="54" selection-end-line="135" selection-end-column="54" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/splitfed_kvasir.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="221">
+          <caret line="130" column="31" selection-start-line="130" selection-start-column="14" selection-end-line="130" selection-end-column="31" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINunet_DS_blasto.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-3417" />
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_Blasto.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2448" />
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_HAM.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="68">
+          <caret line="133" column="31" lean-forward="true" selection-start-line="133" selection-start-column="14" selection-end-line="133" selection-end-column="31" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_splitfed_kvasir.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2193" />
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Baseline_SplitFed/SWINUnet_SplitFed_mosmed.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="136">
+          <caret line="137" column="31" selection-start-line="137" selection-start-column="14" selection-end-line="137" selection-end-column="31" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Centralized/centralized_Blasto.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="170">
+          <caret line="145" selection-start-line="145" selection-end-line="151" selection-end-column="37" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Centralized/centralized_HAM.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="221">
+          <caret line="145" selection-start-line="145" selection-end-line="145" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Centralized/centralized_kvasir.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="136">
+          <caret line="143" lean-forward="true" selection-start-line="143" selection-end-line="143" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/Centralized/centralized_mosmed.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="238">
+          <caret line="152" column="37" selection-start-line="152" selection-start-column="37" selection-end-line="152" selection-end-column="37" />
         </state>
       </provider>
     </entry>

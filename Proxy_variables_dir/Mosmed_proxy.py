@@ -157,7 +157,7 @@ def process_split(split_name, base_path):
 
 
 # Base directory setup
-base_path = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized"
+base_path = "XXXXX/Projects/Data/mosmedplus/mosmedplus_centralized"
 
 # Run for all splits
 for split in ["train", "val", "test"]:

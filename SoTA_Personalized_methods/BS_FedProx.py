@@ -23,14 +23,14 @@ from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 from skimage.metrics import structural_similarity as sk_ssim
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/BS_FedProx.txt"
+output_file = "XXXXX/causalenv/BS_FedProx.txt"
 sys.stdout = open(output_file, "w")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 5
 COMM_ROUNDS = 24
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 
 # FedProx hyperparameter
 FEDPROX_MU = 0.01  # adjust as needed (0.0 disables the proximal term)

@@ -145,12 +145,12 @@ def main():
     dataset_class = covidCTDataset
     NUM_CLASSES = 2
 
-    TRAIN_IMG_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/train_imgs"
-    TRAIN_MASK_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/train_masks"
-    VAL_IMG_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/val_imgs"
-    VAL_MASK_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/val_masks"
-    TEST_IMG_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/test_imgs"
-    TEST_MASK_DIR = "C:/Users/csj5/Projects/Data/mosmedplus/mosmedplus_centralized/test_masks"
+    TRAIN_IMG_DIR = LINK_TO_DATA_PATH
+    TRAIN_MASK_DIR = LINK_TO_DATA_PATH
+    VAL_IMG_DIR = LINK_TO_DATA_PATH
+    VAL_MASK_DIR = LINK_TO_DATA_PATH
+    TEST_IMG_DIR = LINK_TO_DATA_PATH
+    TEST_MASK_DIR = LINK_TO_DATA_PATH
 
     val_transform = A.Compose([
             A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),

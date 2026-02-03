@@ -23,7 +23,7 @@ from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 from skimage.metrics import structural_similarity as sk_ssim
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/BS_FedRep.txt"
+output_file = "XXXXX/causalenv/BS_FedRep.txt"
 sys.stdout = open(output_file, "w")
 
 
@@ -31,7 +31,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 5           # used for legacy baseline; FedRep will use TAU_H and TAU_PHI below
 COMM_ROUNDS = 24
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 
 # FedRep-specific hyperparams (tweak as desired)
 TAU_H = 10        # number of local epochs to train head (many local updates for head, per FedRep)

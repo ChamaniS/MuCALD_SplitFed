@@ -24,14 +24,14 @@ from skimage.metrics import structural_similarity as sk_ssim
 import copy
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/BS_SCAFFOLD.txt"
+output_file = "XXXXX/causalenv/BS_SCAFFOLD.txt"
 sys.stdout = open(output_file, "w")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 5          # kept from your script
 COMM_ROUNDS = 24
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 
 # SCAFFOLD hyperparams
 ETA_G = 1.0    

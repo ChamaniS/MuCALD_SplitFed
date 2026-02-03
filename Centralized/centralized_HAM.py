@@ -144,12 +144,12 @@ def main():
     dataset_class = HAMDataset
     NUM_CLASSES = 2
 
-    TRAIN_IMG_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/train_imgs"
-    TRAIN_MASK_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/train_masks"
-    VAL_IMG_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/val_imgs"
-    VAL_MASK_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/val_masks"
-    TEST_IMG_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/test_imgs"
-    TEST_MASK_DIR = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized/test_masks"
+    TRAIN_IMG_DIR = LINK_TO_DATA_PATH
+    TRAIN_MASK_DIR = LINK_TO_DATA_PATH
+    VAL_IMG_DIR = LINK_TO_DATA_PATH
+    VAL_MASK_DIR = LINK_TO_DATA_PATH
+    TEST_IMG_DIR = LINK_TO_DATA_PATH
+    TEST_MASK_DIR = LINK_TO_DATA_PATH
 
     val_transform = A.Compose([
             A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),

@@ -29,7 +29,7 @@ from models.clientmodel_BE import UNET_BE
 from dataset import EmbryoDataset, HAMDataset, CVCDataset, covidCTDataset, FHPsAOPMSBDataset
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/BS_FedBone.txt"
+output_file = "XXXXX/causalenv/BS_FedBone.txt"
 sys.stdout = open(output_file, "w")
 
 
@@ -40,7 +40,7 @@ CPU = torch.device("cpu")
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 1          # start small for debug
 COMM_ROUNDS = 12
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 BATCH_SIZE = 1
 NUM_WORKERS = 0           # cluster safety
 USE_AMP = False           # disabled to avoid dtype mismatch when transferring tensors

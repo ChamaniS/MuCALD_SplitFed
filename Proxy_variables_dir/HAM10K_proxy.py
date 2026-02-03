@@ -108,7 +108,7 @@ def process_split(split_name, base_path):
     df.to_csv(f"ham10k_causal_tags_{split_name}.csv", index=False)
     print(f"Saved: ham10k_causal_tags_{split_name}.csv")
 
-base_path = "C:/Users/csj5/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized"
+base_path = "XXXXX/Projects/Data/HAM10000/HAM10000/HAM_ALL/HAM10K/Centralized"
 
 # Run for all splits
 for split in ["train", "val", "test"]:

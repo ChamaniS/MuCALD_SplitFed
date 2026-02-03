@@ -33,8 +33,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLIENTS = 5
 T = 400
 
-PROXY_DATA_PATH = "C:/Users/csj5/Projects/Causal-proxy/Proxy_variables_dir/Final/"
-DATA_PATH = "C:/Users/csj5/Projects/Data/MTS2"
+PROXY_DATA_PATH = "XXXXX/Projects/Causal-proxy/Proxy_variables_dir/Final/"
+DATA_PATH = "XXXXX/Projects/Data/MTS2"
 
 os.makedirs("Outputs/feature_maps_compare", exist_ok=True)
 

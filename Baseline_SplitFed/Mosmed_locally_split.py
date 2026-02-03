@@ -22,12 +22,12 @@ from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 from skimage.metrics import structural_similarity as sk_ssim
 
 import sys
-output_file = "/lustre06/project/6008975/csj5/causalenv/mosmed_CEN_LOCAL.txt"
+output_file = "XXXXX/causalenv/mosmed_CEN_LOCAL.txt"
 sys.stdout = open(output_file, "w")
 
 # -------- CONFIG --------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DATA_PATH = "/lustre06/project/6008975/csj5/MTS2"
+DATA_PATH = LINK_TO_DATA_PATH
 mosmed_SUBDIR = "client4"
 NUM_CLASSES = 2
 BATCH_SIZE = 1

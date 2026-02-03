@@ -109,7 +109,7 @@ def process_split(split_name, base_path):
     print(f"Saved: kvasir_proxy_tags_{split_name}.csv")
 
 # Base path for dataset
-base_path = "C:/Users/csj5/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG"
+base_path = "XXXXX/Projects/Data/kvasir-seg/Kvasir-SEG/centralized_Kvasir-SEG"
 
 # Run for train/val/test
 for split in ["train", "val", "test"]:

@@ -25,7 +25,7 @@ from skimage.metrics import structural_similarity as sk_ssim
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 import sys
-output_file = "XXXXX/causalenv/BS_FedEM.txt"
+output_file = "XXXXX/xxxx/BS_FedEM.txt"
 sys.stdout = open(output_file, "w")
 
 NUM_CLIENTS = 5

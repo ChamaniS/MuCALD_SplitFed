@@ -23,7 +23,7 @@ from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 from skimage.metrics import structural_similarity as sk_ssim
 
 import sys
-output_file = "XXXXX/causalenv/BS_FedPer.txt"
+output_file = "XXXXX/xxxx/BS_FedPer.txt"
 sys.stdout = open(output_file, "w")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

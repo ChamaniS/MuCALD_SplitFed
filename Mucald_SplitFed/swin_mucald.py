@@ -31,7 +31,7 @@ from proxy_tables import ProxyTable
 from dataset_wrappers import WithFilenames
 from models.z_prior import ZPrior
 import sys
-output_file = "XXXXX/causalenv/mucald_final_swin.txt"
+output_file = "XXXXX/xxxx/mucald_final_swin.txt"
 sys.stdout = open(output_file, "w")
 from torch.utils.data import Subset
 import copy
@@ -173,7 +173,7 @@ beta = cosine_beta_schedule(T, device=torch.device(DEVICE))
 alpha = 1.0 - beta
 alpha_cum = torch.cumprod(alpha, dim=0).to(DEVICE)
 
-PROXY_DATA_PATH = "XXXXX/causalenv/Proxy_variables_dir/Final/"
+PROXY_DATA_PATH = "XXXXX/xxxx/Proxy_variables_dir/Final/"
 DATA_PATH = LINK_TO_DATA_PATH
 
 os.makedirs("BestModels", exist_ok=True)

@@ -29,7 +29,7 @@ from models.clientmodel_BE import UNET_BE
 from dataset import EmbryoDataset, HAMDataset, CVCDataset, covidCTDataset, FHPsAOPMSBDataset
 
 import sys
-output_file = "XXXXX/causalenv/BS_FedBone.txt"
+output_file = "XXXXX/xxxx/BS_FedBone.txt"
 sys.stdout = open(output_file, "w")
 
 

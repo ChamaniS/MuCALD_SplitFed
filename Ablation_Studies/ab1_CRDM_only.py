@@ -1,24 +1,33 @@
-# full corrected code (copy-paste)
+# full corrected code (CRDM only, copy-paste)
 import os
 CUDA_LAUNCH_BLOCKING = 1
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+import copy
+import sys
+import math
+from collections import defaultdict
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import jaccard_score
 from tqdm import tqdm
-from collections import defaultdict
 import matplotlib.pyplot as plt
 import segmentation_models_pytorch as smp
-from torch.autograd import Function
+from PIL import Image
+from scipy import ndimage as ndi
+from skimage.metrics import structural_similarity as sk_ssim
+from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 
-from models.UNet_3Plus_FE import UNet_3Plus_FE as UNET_FE
-from models.UNet_3Plus_SS import UNet_3Plus_SS as UNET_server
-from models.UNet_3Plus_BE import UNet_3Plus_BE as UNET_BE
+from models.clientmodel_FE import UNET_FE
+from models.servermodel import UNET_server
+from models.clientmodel_BE import UNET_BE
 from dataset import EmbryoDataset, HAMDataset, CVCDataset, covidCTDataset, FHPsAOPMSBDataset
 from reverse_diff_causal import initialize_conditional_denoiser
 from models.exogenous_encoder import ExogenousEncoder
@@ -27,23 +36,15 @@ from scm_configs import get_scm_config
 from proxy_tables import ProxyTable
 from dataset_wrappers import WithFilenames
 from models.z_prior import ZPrior
-import sys
-output_file = "XXXXX/xxxx/mucald_unet3plus.txt"
-sys.stdout = open(output_file, "w")
-from torch.utils.data import Subset
-import copy
-import torchvision
-import numpy as np
-from PIL import Image
-from scipy import ndimage as ndi
-from skimage.metrics import structural_similarity as sk_ssim
-from skimage.metrics import peak_signal_noise_ratio as sk_psnr
-import math
+
 try:
     import lpips
     LPIPS_AVAILABLE = True
 except Exception:
     LPIPS_AVAILABLE = False
+
+output_file = "xxxx/mucald_final_unet_CRDM_only.txt"
+sys.stdout = open(output_file, "w")
 
 DEVICE = "cuda"
 NUM_CLIENTS = 5
@@ -54,7 +55,7 @@ LAMBDA_PROXY = 1.5
 LAMBDA_DIFF = 0.5
 LAMBDA_KLU = 1e-4
 LAMBDA_KLZ = 1e-4
-MU = 0.001  
+MU = 0.001
 WARMUP_EPOCHS = 2
 RAMP_EPOCHS = 3
 
@@ -63,48 +64,33 @@ LAMBDA_DIFF_TARGET = 0.40
 LAMBDA_KLU_TARGET = 1.0e-4
 LAMBDA_KLZ_TARGET = 1.0e-4
 
-LAMBDA_ADV = 0.10
-LAMBDA_DOM = 0.1
+PROXY_DATA_PATH = "xxxx/Proxy_variables_dir/Final/"
+DATA_PATH = "/xxxxMTS2"
+
+os.makedirs("BestModels", exist_ok=True)
+os.makedirs("Outputs", exist_ok=True)
+os.makedirs("Outputs/unet_mucald_test_preds_CRDMonly", exist_ok=True)
+
+test_iou_wbg_all = {i: [] for i in range(NUM_CLIENTS)}
+test_iou_nbg_all = {i: [] for i in range(NUM_CLIENTS)}
 
 
-PER_CLIENT_ADV_SCALE = {
-    1: 1.0,   # Blastocyst
-    2: 0.4,   # HAM10K  
-    3: 1.0,   # Fetal
-    4: 1.8,   # MosMed 
-    5: 1.0    # Kvasir
-}
-
-
-class GradReverse(Function):
-    @staticmethod
-    def forward(ctx, x, lambd=1.0):
-        ctx.lambd = lambd
-        return x.view_as(x)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output.neg() * ctx.lambd, None
-
-
-def grad_reverse(x, lambd=1.0):
-    return GradReverse.apply(x, lambd)
-
-
-class DomainDiscriminator(nn.Module):
-    def __init__(self, in_dim=32, num_domains=NUM_CLIENTS, hidden_dim=128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_dim, hidden_dim, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d(1),  
-            nn.Flatten(),              
-            nn.Linear(hidden_dim, num_domains)
-        )
-    def forward(self, x):
-        return self.net(x)
-
-
+def unwrap_tensor_output(out, name="model"):
+    """
+    UNET_FE / UNET_BE / UNET_server may return:
+      - Tensor
+      - (Tensor, aux)
+      - [Tensor, aux]
+    This helper extracts the first tensor safely.
+    """
+    if isinstance(out, torch.Tensor):
+        return out
+    if isinstance(out, (tuple, list)):
+        for item in out:
+            if isinstance(item, torch.Tensor):
+                return item
+        raise TypeError(f"{name} returned a tuple/list but no tensor was found inside.")
+    raise TypeError(f"{name} returned unsupported type: {type(out)}")
 
 
 def get_epoch_lambdas(ep: int):
@@ -129,7 +115,6 @@ def get_epoch_lambdas(ep: int):
 
 T = 400
 
-
 def cosine_beta_schedule(T: int, s: float = 0.008, device: torch.device = None):
     device = device or torch.device("cpu")
     t = torch.linspace(0, T, T + 1, device=device) / T
@@ -143,15 +128,8 @@ beta = cosine_beta_schedule(T, device=torch.device(DEVICE))
 alpha = 1.0 - beta
 alpha_cum = torch.cumprod(alpha, dim=0).to(DEVICE)
 
-PROXY_DATA_PATH = "XXXXX/xxxx/Proxy_variables_dir/Final/"
-DATA_PATH = LINK_TO_DATA_PATH
-
-os.makedirs("BestModels", exist_ok=True)
-os.makedirs("Outputs", exist_ok=True)
-
-test_iou_wbg_all = {i: [] for i in range(NUM_CLIENTS)}
-test_iou_nbg_all = {i: [] for i in range(NUM_CLIENTS)}
-
+PROXY_DATA_PATH = "xxxx/Proxy_variables_dir/Final/"
+DATA_PATH = "/xxxxMTS2"
 
 
 def extract_into(arr_1d, timesteps, x_shape):
@@ -174,10 +152,12 @@ def diffusion_noise_loss(denoiser, x0, t_vec, z_cond, alpha_cum, want_grad_x0=Fa
     x_t_detached = sqrt_ab * x0.detach() + sqrt_1mab * eps
     eps_pred = denoiser(x_t_detached, t_vec, z_cond)
     loss = F.mse_loss(eps_pred, eps)
+
     if not want_grad_x0:
         with torch.no_grad():
             x0_hat = (x_t_detached - sqrt_1mab * eps_pred) / (sqrt_ab + 1e-8)
         return loss, x0_hat
+
     x_t_for_seg = sqrt_ab * x0 + sqrt_1mab * eps
     eps_pred_ng = eps_pred.detach()
     x0_hat_for_seg = (x_t_for_seg - sqrt_1mab * eps_pred_ng) / (sqrt_ab + 1e-8)
@@ -191,7 +171,7 @@ def kl_standard_normal(mu, logvar):
 def kl_gaussians(mu_q, logv_q, mu_p, logv_p, weight=None):
     device = mu_q.device
     mu_p, logv_p = mu_p.to(device), logv_p.to(device)
-    var_q = logv_q.exp();
+    var_q = logv_q.exp()
     var_p = logv_p.exp()
     per = 0.5 * torch.sum(logv_p - logv_q + (var_q + (mu_q - mu_p) ** 2) / (var_p + 1e-8) - 1.0, dim=1)
     if weight is None:
@@ -258,26 +238,23 @@ def make_grad_tracker(model):
             for name, p in model.named_parameters() if p.requires_grad}
 
 
-
-def _flatten_for_fid(tensor):  
+def _flatten_for_fid(tensor):
     N = tensor.shape[0]
     return tensor.reshape(N, -1).astype(np.float64)
 
 
 def frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
-
     from scipy.linalg import sqrtm
     mu1 = np.atleast_1d(mu1)
     mu2 = np.atleast_1d(mu2)
     sigma1 = np.atleast_2d(sigma1)
     sigma2 = np.atleast_2d(sigma2)
     diff = mu1 - mu2
-    covmean, _ = None, None
     try:
         covmean = sqrtm(sigma1.dot(sigma2))
     except Exception:
         covmean = None
-    if not np.isfinite(covmean).all():
+    if covmean is None or not np.isfinite(covmean).all():
         offset = np.eye(sigma1.shape[0]) * eps
         covmean = sqrtm((sigma1 + offset).dot(sigma2 + offset))
     if np.iscomplexobj(covmean):
@@ -298,13 +275,11 @@ def compute_recon_metrics(clean_list, hat_list):
     if len(clean_list) == 0:
         return {"mse": None, "psnr": None, "ssim": None, "fid": None, "lpips": None}
 
-    clean = np.stack(clean_list, axis=0)  
+    clean = np.stack(clean_list, axis=0)
     hat = np.stack(hat_list, axis=0)
-
 
     mse_per_sample = np.mean((clean - hat) ** 2, axis=(1, 2, 3))
     mse = float(mse_per_sample.mean())
-
 
     psnrs = []
     ssims = []
@@ -314,20 +289,21 @@ def compute_recon_metrics(clean_list, hat_list):
         data_range = float(c.max() - c.min())
         if data_range <= 0:
             data_range = 1.0
-
         psnrs.append(sk_psnr(c, h, data_range=data_range))
 
         ch_ssims = []
         for ch in range(c.shape[0]):
             try:
-                ch_ssim = sk_ssim(c[ch], h[ch], data_range=(c[ch].max() - c[ch].min()) if (c[ch].max() - c[ch].min()) != 0 else 1.0)
+                dr = (c[ch].max() - c[ch].min())
+                dr = dr if dr != 0 else 1.0
+                ch_ssim = sk_ssim(c[ch], h[ch], data_range=dr)
             except Exception:
                 ch_ssim = 0.0
             ch_ssims.append(ch_ssim)
         ssims.append(float(np.mean(ch_ssims)))
+
     psnr = float(np.mean(psnrs))
     ssim = float(np.mean(ssims))
-
 
     arr1 = _flatten_for_fid(clean)
     arr2 = _flatten_for_fid(hat)
@@ -340,18 +316,19 @@ def compute_recon_metrics(clean_list, hat_list):
     if LPIPS_AVAILABLE:
         try:
             loss_fn = lpips.LPIPS(net='alex').to("cpu")
-
             if clean.shape[1] == 3:
                 scores = []
+
+                def norm01(t):
+                    t = t - float(t.min())
+                    denom = float(t.max() - t.min())
+                    if denom <= 0:
+                        denom = 1.0
+                    return 2.0 * (t / denom) - 1.0
+
                 for i in range(clean.shape[0]):
-                    cimg = torch.tensor(clean[i]).unsqueeze(0)  
+                    cimg = torch.tensor(clean[i]).unsqueeze(0)
                     himg = torch.tensor(hat[i]).unsqueeze(0)
-                    def norm01(t):
-                        t = t - float(t.min())
-                        denom = float(t.max() - t.min())
-                        if denom <= 0:
-                            denom = 1.0
-                        return 2.0 * (t / denom) - 1.0
                     c01 = norm01(cimg)
                     h01 = norm01(himg)
                     with torch.no_grad():
@@ -375,7 +352,6 @@ def _mask_to_surface(mask):
 def _surface_distances(mask_gt, mask_pred):
     if mask_gt.sum() == 0:
         return np.array([])
-    
     pred_dist = ndi.distance_transform_edt(~mask_pred)
     gt_surface = _mask_to_surface(mask_gt)
     distances = pred_dist[gt_surface]
@@ -386,7 +362,6 @@ def hd95_assd_for_pair(mask_gt, mask_pred):
     if mask_gt.sum() == 0 and mask_pred.sum() == 0:
         return 0.0, 0.0
 
-  
     d_gt_to_pred = _surface_distances(mask_gt, mask_pred)
     d_pred_to_gt = _surface_distances(mask_pred, mask_gt)
 
@@ -419,12 +394,10 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
     hd95_per_class = np.zeros((num_classes,), dtype=float)
     assd_per_class = np.zeros((num_classes,), dtype=float)
 
-    
     tp = np.zeros((num_classes,), dtype=float)
     fp = np.zeros((num_classes,), dtype=float)
     fn = np.zeros((num_classes,), dtype=float)
 
-    
     try:
         ious_all = jaccard_score(
             target_np.flatten(),
@@ -434,7 +407,6 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
             zero_division=0
         )
     except Exception:
-     
         ious_all = np.zeros((num_classes,), dtype=float)
         for c in range(num_classes):
             inter = np.logical_and(target_np == c, preds_lbl_np == c).sum()
@@ -443,7 +415,6 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
 
     iou_per_class[:] = ious_all
 
-   
     for c in range(num_classes):
         for i in range(N):
             gt_mask = (target_np[i] == c)
@@ -455,12 +426,9 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
             fp[c] += max(0.0, p_area - inter)
             fn[c] += max(0.0, g_area - inter)
 
-
             hd95_val, assd_val = hd95_assd_for_pair(gt_mask.astype(bool), pred_mask.astype(bool))
-
             hd95_per_class[c] += hd95_val
             assd_per_class[c] += assd_val
-
 
     for c in range(num_classes):
         precision = tp[c] / (tp[c] + fp[c]) if (tp[c] + fp[c]) > 0 else 0.0
@@ -469,11 +437,8 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
         prec_per_class[c] = precision
         rec_per_class[c] = recall
         f1_per_class[c] = f1
-
         denom = (2.0 * tp[c] + fp[c] + fn[c])
         dice_per_class[c] = (2.0 * tp[c] / denom) if denom > 0 else 0.0
-
-
         hd95_per_class[c] = float(hd95_per_class[c] / max(1, N))
         assd_per_class[c] = float(assd_per_class[c] / max(1, N))
 
@@ -488,27 +453,21 @@ def compute_segmentation_metrics_all(preds_lbl_np, target_np, num_classes):
     }
 
 
-
 def _try_resolve_original_path(loader, fname):
-
     if os.path.isabs(fname) and os.path.exists(fname):
         return fname
-
     if os.path.exists(fname):
         return fname
 
     ds = loader.dataset
-
     if hasattr(ds, "dataset"):
         ds = ds.dataset
 
     candidate_dirs = []
- 
     for attr in ("root", "img_dir", "image_dir", "base_dir", "data_dir", "images_dir"):
         base = getattr(ds, attr, None)
         if base:
             candidate_dirs.append(base)
-
 
     try:
         if hasattr(loader.dataset, "base_dir") and loader.dataset.base_dir:
@@ -517,11 +476,9 @@ def _try_resolve_original_path(loader, fname):
         pass
 
     for d in candidate_dirs:
-  
         candidate = os.path.join(d, fname)
         if os.path.exists(candidate):
             return candidate
-
         candidate2 = os.path.join(d, os.path.basename(fname))
         if os.path.exists(candidate2):
             return candidate2
@@ -529,13 +486,11 @@ def _try_resolve_original_path(loader, fname):
     return None
 
 
-
 @torch.no_grad()
 def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
-                     num_classes, out_dir_root="Outputs/unet3plus_mucald_test_preds", cid=1):
+                     num_classes, out_dir_root="Outputs/unet_mucald_test_preds_CRDMonly", cid=1):
     out_dir = os.path.join(out_dir_root, f"client{cid}")
     os.makedirs(out_dir, exist_ok=True)
-
 
     with torch.no_grad():
         for batch in loader:
@@ -545,11 +500,12 @@ def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2,
             else:
                 data, target = batch
                 fnames = [str(i) for i in range(data.size(0))]
+
             data = data.to(DEVICE)
             B = data.size(0)
             t_vec = torch.full((B,), max(1, T // 2), device=DEVICE, dtype=torch.long)
 
-            x1 = FE(data)
+            x1 = unwrap_tensor_output(FE(data), "FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
             zc1 = scm1.as_vector(z_list_1)
@@ -561,7 +517,7 @@ def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2,
             eps_pred1 = denoiser1(x_t1, t_vec, zc1)
             x1_hat = (x_t1 - sqrt_1mab * eps_pred1) / (sqrt_ab + 1e-8)
 
-            x2 = SS(x1_hat)
+            x2 = unwrap_tensor_output(SS(x1_hat), "SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
             zc2 = scm2.as_vector(z_list_2)
@@ -571,8 +527,8 @@ def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2,
             eps_pred2 = denoiser2(x_t2, t_vec, zc2)
             x2_hat = (x_t2 - sqrt_1mab * eps_pred2) / (sqrt_ab + 1e-8)
 
-            preds = BE(x2_hat)
-            preds_lbl = torch.argmax(preds, dim=1).cpu().numpy()  # (B, H, W)
+            preds = unwrap_tensor_output(BE(x2_hat), "BE")
+            preds_lbl = torch.argmax(preds, dim=1).cpu().numpy()
 
             for b in range(preds_lbl.shape[0]):
                 fname = fnames[b]
@@ -589,13 +545,12 @@ def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2,
                     vis = (arr * 255).astype(np.uint8)
 
                 orig_path = _try_resolve_original_path(loader, fname)
-                img = Image.fromarray(vis)
-                img = img.convert("L")  
+                img = Image.fromarray(vis).convert("L")
 
                 if orig_path is not None:
                     try:
                         orig_img = Image.open(orig_path)
-                        orig_size = orig_img.size 
+                        orig_size = orig_img.size
                         img = img.resize(orig_size, resample=Image.NEAREST)
                     except Exception as e:
                         print(f"[save_test_images] Warning: couldn't open/resize original {orig_path}: {e}")
@@ -645,8 +600,7 @@ def causal_invariant_fusion(
         out[key] = sum(sd[key] * w for sd, w in zip(model_sds, weights))
 
     return out
-    
-    
+
 
 def equal_weight_fusion(models):
     ref_sd = models[0].state_dict()
@@ -660,44 +614,12 @@ def equal_weight_fusion(models):
     return out
 
 
-
 def get_transforms(task_name):
-    if task_name == "Blastocyst":
-        return A.Compose([
-            A.Resize(256, 256),
-            A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
-            ToTensorV2()
-        ])
-    elif task_name == "HAM10K":
-        return A.Compose([
-            A.Resize(256, 256),
-            A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
-            ToTensorV2()
-        ])
-    elif task_name == "Fetal":
-        return A.Compose([
-            A.Resize(256, 256),
-            A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
-            ToTensorV2()
-        ])
-    elif task_name == "Mosmed":
-        return A.Compose([
-            A.Resize(256, 256),
-            A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
-            ToTensorV2()
-        ])
-    elif task_name == "Kvasir":
-        return A.Compose([
-            A.Resize(256, 256),
-            A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
-            ToTensorV2()
-        ])
     return A.Compose([
         A.Resize(256, 256),
-        A.Normalize(mean=[0]*3, std=[1]*3, max_pixel_value=255.0),
+        A.Normalize(mean=[0] * 3, std=[1] * 3, max_pixel_value=255.0),
         ToTensorV2()
     ])
-
 
 
 def plot_curves(round_num):
@@ -711,7 +633,7 @@ def plot_curves(round_num):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("Outputs/mucald_unet3plus_final_wb.png")
+    plt.savefig("Outputs/mucald_unet_final_wb.png")
     plt.close()
 
     plt.figure(figsize=(10, 5))
@@ -722,36 +644,36 @@ def plot_curves(round_num):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("Outputs/mucald_unet3plus_final_nb.png")
+    plt.savefig("Outputs/mucald_unet_final_nb.png")
     plt.close()
 
 
 def train_local(loader, FE, SS, BE,
                 denoiser1, denoiser2,
                 exo1, scm1, exo2, scm2,
-                dom_disc1, dom_disc2,
-                opt, dom_opt, loss_fn, cid, num_classes,
+                opt, loss_fn, cid, num_classes,
                 task_name, proxy_table: ProxyTable,
-                fallback_state=None, mask_thresh=1e-5, client_size=None,max_size=None):
+                fallback_state=None, mask_thresh=1e-5, client_size=None, max_size=None):
 
-    FE.train(); SS.train(); BE.train()
-    denoiser1.train(); denoiser2.train()
-    exo1.train(); scm1.train()
-    exo2.train(); scm2.train()
-    dom_disc1.train(); dom_disc2.train()
+    FE.train()
+    SS.train()
+    BE.train()
+    denoiser1.train()
+    denoiser2.train()
+    exo1.train()
+    scm1.train()
+    exo2.train()
+    scm2.train()
 
     ss_grad = make_grad_tracker(SS)
     d1_grad = make_grad_tracker(denoiser1)
     d2_grad = make_grad_tracker(denoiser2)
     num_updates = 0
-    
+
     if client_size is not None and max_size is not None:
         seg_weight = max_size / float(client_size)
-        adv_weight = client_size / float(max_size)
     else:
         seg_weight = 1.0
-        adv_weight = 1.0
-    
 
     for ep in range(LOCAL_EPOCHS):
         lam_proxy, lam_diff, lam_klu, lam_klz = get_epoch_lambdas(ep)
@@ -759,16 +681,7 @@ def train_local(loader, FE, SS, BE,
         if task_name in ["Blastocyst", "Fetal", "Mosmed"]:
             lam_proxy *= 0.25
 
-        if ep < WARMUP_EPOCHS + RAMP_EPOCHS:
-            lam_adv = 0.0
-        else:
-            lam_adv = LAMBDA_ADV
-
-
-        scale = PER_CLIENT_ADV_SCALE.get(cid, 1.0)
-        lam_adv = lam_adv * scale
-
-        print(f"[Sched] ep={ep+1}/{LOCAL_EPOCHS} | ?_proxy={lam_proxy:.3g}, ?_diff={lam_diff:.3g}, ?_KLu={lam_klu:.3g}, ?_KLz={lam_klz:.3g}")
+        print(f"[Sched] ep={ep+1}/{LOCAL_EPOCHS} | proxy={lam_proxy:.3g}, diff={lam_diff:.3g}, KLu={lam_klu:.3g}, KLz={lam_klz:.3g}")
 
         tloss = 0.0
         tcorrect = 0.0
@@ -776,9 +689,9 @@ def train_local(loader, FE, SS, BE,
         iou_c = [0.0] * num_classes
 
         proxy_sq_sum_s1 = defaultdict(float)
-        proxy_n_s1      = defaultdict(int)
+        proxy_n_s1 = defaultdict(int)
         proxy_sq_sum_s2 = defaultdict(float)
-        proxy_n_s2      = defaultdict(int)
+        proxy_n_s2 = defaultdict(int)
 
         for batch in tqdm(loader, leave=False):
             if len(batch) == 3:
@@ -787,26 +700,29 @@ def train_local(loader, FE, SS, BE,
             else:
                 data, target = batch
                 fnames = [str(i) for i in range(data.size(0))]
+
             data, target = data.to(DEVICE), target.long().to(DEVICE)
             B = data.size(0)
             t_vec = torch.randint(1, T, (B,), device=DEVICE)
 
-
-            x1 = FE(data)
+            x1 = unwrap_tensor_output(FE(data), "FE")
             u_list_1, u_mu_1, u_lv_1 = exo1(x1)
             z_list_1 = scm1(u_list_1)
             z_causal_1 = scm1.as_vector(z_list_1)
-            diff_loss1, x1_hat = diffusion_noise_loss(denoiser1, x1, t_vec, z_causal_1.detach(), alpha_cum, want_grad_x0=True)
+            diff_loss1, x1_hat = diffusion_noise_loss(
+                denoiser1, x1, t_vec, z_causal_1.detach(), alpha_cum, want_grad_x0=True
+            )
 
-            x2 = SS(x1_hat)
+            x2 = unwrap_tensor_output(SS(x1_hat), "SS")
             u_list_2, u_mu_2, u_lv_2 = exo2(x2)
             z_list_2 = scm2(u_list_2)
             z_causal_2 = scm2.as_vector(z_list_2)
-            diff_loss2, x2_hat = diffusion_noise_loss(denoiser2, x2, t_vec, z_causal_2.detach(), alpha_cum, want_grad_x0=True)
+            diff_loss2, x2_hat = diffusion_noise_loss(
+                denoiser2, x2, t_vec, z_causal_2.detach(), alpha_cum, want_grad_x0=True
+            )
 
-            preds = BE(x2_hat)
+            preds = unwrap_tensor_output(BE(x2_hat), "BE")
             seg_loss = loss_fn(preds, target)
-
 
             proxy_loss1 = 0.0
             proxy_loss2 = 0.0
@@ -835,8 +751,8 @@ def train_local(loader, FE, SS, BE,
                             proxy_loss2 += err2.mean()
                             proxy_sq_sum_s1[nname] += float(err1.sum().item())
                             proxy_sq_sum_s2[nname] += float(err2.sum().item())
-                            proxy_n_s1[nname]      += int(mask.sum().item())
-                            proxy_n_s2[nname]      += int(mask.sum().item())
+                            proxy_n_s1[nname] += int(mask.sum().item())
+                            proxy_n_s2[nname] += int(mask.sum().item())
                         y_list.append(torch.nan_to_num(tgt, nan=0.0))
                         mask_list.append(mask.float())
                     else:
@@ -844,7 +760,6 @@ def train_local(loader, FE, SS, BE,
                         mask_list.append(torch.zeros(B, device=DEVICE))
                 y_input = torch.stack(y_list, dim=1)
                 y_mask_per_node = torch.stack(mask_list, dim=1)
-
 
             kl_u1 = sum(kl_standard_normal(mu, lv) for mu, lv in zip(u_mu_1, u_lv_1))
             kl_u2 = sum(kl_standard_normal(mu, lv) for mu, lv in zip(u_mu_2, u_lv_2))
@@ -868,43 +783,22 @@ def train_local(loader, FE, SS, BE,
                     kl_z += kl_gaussians(z1, lv_q1, mu_p, lv_p, weight=w)
                     kl_z += kl_gaussians(z2, lv_q2, mu_p, lv_p, weight=w)
 
-
-            domain_labels = torch.full((B,), cid-1, dtype=torch.long, device=DEVICE)
-
-
-            adv_logits1 = dom_disc1(grad_reverse(x1_hat))
-            adv_loss1 = F.cross_entropy(adv_logits1, domain_labels)
-            adv_logits2 = dom_disc2(grad_reverse(x2_hat))
-            adv_loss2 = F.cross_entropy(adv_logits2, domain_labels)
-
-
-            dom_logits1 = dom_disc1(x1_hat.detach())
-            dom_loss1 = F.cross_entropy(dom_logits1, domain_labels)
-
-            dom_logits2 = dom_disc2(x2_hat.detach())
-            dom_loss2 = F.cross_entropy(dom_logits2, domain_labels)
-   
-            
-
             loss = (
-                    seg_weight *seg_loss
-                    + lam_proxy * (proxy_loss1 + proxy_loss2)
-                    + lam_diff * (diff_loss1 + diff_loss2)
-                    + lam_klu * kl_u
-                    + lam_klz * kl_z
-                    + (adv_weight * lam_adv) * (adv_loss1 + adv_loss2)
+                seg_weight * seg_loss
+                + lam_proxy * (proxy_loss1 + proxy_loss2)
+                + lam_diff * (diff_loss1 + diff_loss2)
+                + lam_klu * kl_u
+                + lam_klz * kl_z
             )
 
-
             prox_term = 0.0
-            if fallback_state is not None:  
+            if fallback_state is not None:
                 global_params = fallback_state
                 for name, p in SS.named_parameters():
                     if p.requires_grad:
                         prox_term += ((p - global_params[name].to(p.device)) ** 2).sum()
             prox_term = 0.5 * MU * prox_term
             loss = loss + prox_term
-
 
             opt.zero_grad()
             loss.backward()
@@ -922,14 +816,8 @@ def train_local(loader, FE, SS, BE,
 
             opt.step()
 
-
-            dom_opt.zero_grad()
-            (dom_loss1 + dom_loss2).backward()
-            dom_opt.step()
-
             num_updates += 1
             num_batches += 1
-
 
             preds_lbl = torch.argmax(preds, dim=1)
             tcorrect += (preds_lbl == target).float().mean().item()
@@ -964,7 +852,6 @@ def train_local(loader, FE, SS, BE,
             print(f"[{task_name} | Client {cid}] Proxy MSE (Split-1, epoch {ep+1}): " + ", ".join(parts1))
             print(f"[{task_name} | Client {cid}] Proxy MSE (Split-2, epoch {ep+1}): " + ", ".join(parts2))
 
-
     ss_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in ss_grad.items()}
     d1_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in d1_grad.items()}
     d2_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in d2_grad.items()}
@@ -977,7 +864,6 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
              proxy_table: ProxyTable,
              task_name: str = "",
              cid: int = -1):
-
     total_loss = 0.0
     total_correct = 0.0
     iou_c = [0.0] * num_classes
@@ -997,7 +883,7 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
             B = data.size(0)
             t_vec = torch.full((B,), max(1, T // 2), device=DEVICE, dtype=torch.long)
 
-            x1 = FE(data)
+            x1 = unwrap_tensor_output(FE(data), "FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
             zc1 = scm1.as_vector(z_list_1)
@@ -1009,7 +895,7 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
             eps_pred1 = denoiser1(x_t1, t_vec, zc1)
             x1_hat = (x_t1 - sqrt_1mab * eps_pred1) / (sqrt_ab + 1e-8)
 
-            x2 = SS(x1_hat)
+            x2 = unwrap_tensor_output(SS(x1_hat), "SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
             zc2 = scm2.as_vector(z_list_2)
@@ -1019,7 +905,7 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
             eps_pred2 = denoiser2(x_t2, t_vec, zc2)
             x2_hat = (x_t2 - sqrt_1mab * eps_pred2) / (sqrt_ab + 1e-8)
 
-            preds = BE(x2_hat)
+            preds = unwrap_tensor_output(BE(x2_hat), "BE")
             seg_loss = loss_fn(preds, target)
 
             if proxy_table is not None and proxy_table.enabled:
@@ -1057,7 +943,6 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
     acc = 100. * (total_correct / num_batches)
     avg_iou = [v / num_batches for v in iou_c]
 
-
     proxy_mse = 0.0
     total_count = 0
     for nname in proxy_sq_sum_s1:
@@ -1065,11 +950,10 @@ def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
             proxy_mse += proxy_sq_sum_s1[nname] / proxy_n_s1[nname]
             total_count += 1
     proxy_mse = proxy_mse / max(1, total_count)
-    if total_count == 0: 
-        proxy_mse = 10.0   
+    if total_count == 0:
+        proxy_mse = 10.0
     proxy_mse = max(proxy_mse, 1e-3)
 
-    N = len(loader.dataset)
     print(f"Eval Loss: {total_loss / max(num_batches, 1):.4f} | Eval Acc: {acc:.2f}% | "
           f"IoU w/bg: {sum(avg_iou) / num_classes:.4f} | IoU no/bg: {sum(avg_iou[1:]) / (num_classes - 1):.4f} | "
           f"Proxy MSE: {proxy_mse:.4f}")
@@ -1083,7 +967,6 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
     preds_all = []
     targets_all = []
 
-
     mse_sum_x1 = 0.0
     mse_sum_x2 = 0.0
     psnr_sum_x1 = 0.0
@@ -1096,7 +979,6 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
 
     n_samples = 0
 
-
     sum_feat_x1 = None
     sumsq_feat_x1 = None
     sum_feat_x1hat = None
@@ -1106,7 +988,6 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
     sumsq_feat_x2 = None
     sum_feat_x2hat = None
     sumsq_feat_x2hat = None
-
 
     lpips_fn = None
     if LPIPS_AVAILABLE:
@@ -1127,7 +1008,7 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
             B = data.size(0)
             t_vec = torch.full((B,), max(1, T // 2), device=device, dtype=torch.long)
 
-            x1 = FE(data)                  
+            x1 = unwrap_tensor_output(FE(data), "FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
             zc1 = scm1.as_vector(z_list_1)
@@ -1139,39 +1020,34 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
             eps_pred1 = denoiser1(x_t1, t_vec, zc1)
             x1_hat = (x_t1 - sqrt_1mab * eps_pred1) / (sqrt_ab + 1e-8)
 
-            x2 = SS(x1_hat)
+            x2 = unwrap_tensor_output(SS(x1_hat), "SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
             zc2 = scm2.as_vector(z_list_2)
 
             eps2 = torch.randn_like(x2)
-            sqrt_ab = extract_into(alpha_cum.sqrt(), t_vec, x2.shape)
-            sqrt_1mab = extract_into((1.0 - alpha_cum).sqrt(), t_vec, x2.shape)
             x_t2 = sqrt_ab * x2 + sqrt_1mab * eps2
             eps_pred2 = denoiser2(x_t2, t_vec, zc2)
             x2_hat = (x_t2 - sqrt_1mab * eps_pred2) / (sqrt_ab + 1e-8)
 
-            preds = BE(x2_hat)
-            preds_lbl = torch.argmax(preds, dim=1).cpu().numpy() 
-            targets_np = target.cpu().numpy() 
+            preds = unwrap_tensor_output(BE(x2_hat), "BE")
+            preds_lbl = torch.argmax(preds, dim=1).cpu().numpy()
+            targets_np = target.cpu().numpy()
 
             preds_all.append(preds_lbl)
             targets_all.append(targets_np)
-
 
             x1_cpu = x1.detach().cpu().numpy()
             x1hat_cpu = x1_hat.detach().cpu().numpy()
             x2_cpu = x2.detach().cpu().numpy()
             x2hat_cpu = x2_hat.detach().cpu().numpy()
 
-
             for i in range(x1_cpu.shape[0]):
                 n_samples += 1
-                c_clean = x1_cpu[i]   
-                c_hat = x1hat_cpu[i]
-                mse_val = float(np.mean((c_clean - c_hat) ** 2))
-                mse_sum_x1 += mse_val
 
+                c_clean = x1_cpu[i]
+                c_hat = x1hat_cpu[i]
+                mse_sum_x1 += float(np.mean((c_clean - c_hat) ** 2))
                 dr = float(c_clean.max() - c_clean.min())
                 if dr <= 0:
                     dr = 1.0
@@ -1191,8 +1067,7 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
 
                 c2_clean = x2_cpu[i]
                 c2_hat = x2hat_cpu[i]
-                mse_val2 = float(np.mean((c2_clean - c2_hat) ** 2))
-                mse_sum_x2 += mse_val2
+                mse_sum_x2 += float(np.mean((c2_clean - c2_hat) ** 2))
                 dr2 = float(c2_clean.max() - c2_clean.min())
                 if dr2 <= 0:
                     dr2 = 1.0
@@ -1210,7 +1085,6 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
                 except Exception:
                     ssim_sum_x2 += 0.0
 
-
                 if lpips_fn is not None and c_clean.shape[0] == 3:
                     try:
                         def norm01(t):
@@ -1219,11 +1093,13 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
                             if denom <= 0:
                                 denom = 1.0
                             return 2.0 * (t / denom) - 1.0
+
                         tc = torch.from_numpy(norm01(c_clean)).unsqueeze(0).float()
                         th = torch.from_numpy(norm01(c_hat)).unsqueeze(0).float()
                         with torch.no_grad():
                             s = lpips_fn(tc, th).item()
                         lpips_sum_x1 += s
+
                         tc2 = torch.from_numpy(norm01(c2_clean)).unsqueeze(0).float()
                         th2 = torch.from_numpy(norm01(c2_hat)).unsqueeze(0).float()
                         with torch.no_grad():
@@ -1233,9 +1109,7 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
                     except Exception:
                         pass
 
-
             def _update_flat_stats(arr_np, sum_ref, sumsq_ref):
-
                 flat = arr_np.reshape(arr_np.shape[0], -1).astype(np.float64)
                 if sum_ref is None:
                     sum_ref = np.sum(flat, axis=0)
@@ -1248,26 +1122,19 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
             sum_feat_x1, sumsq_feat_x1 = _update_flat_stats(x1_cpu, sum_feat_x1, sumsq_feat_x1)
             sum_feat_x1hat, sumsq_feat_x1hat = _update_flat_stats(x1hat_cpu, sum_feat_x1hat, sumsq_feat_x1hat)
             sum_feat_x2, sumsq_feat_x2 = _update_flat_stats(x2_cpu, sum_feat_x2, sumsq_feat_x2)
-            sum_feat_x2hat, sumsq_feat_x2hat = _update_flat_stats(x2hat_cpu, sum_feat_x2hat, sumsq_feat_x2hat) if False else (sum_feat_x2hat, sumsq_feat_x2hat)
-            if sum_feat_x2hat is None:
-                sum_feat_x2hat, sumsq_feat_x2hat = _update_flat_stats(x2hat_cpu, sum_feat_x2hat, sumsq_feat_x2hat)
-            else:
-                sum_feat_x2hat, sumsq_feat_x2hat = _update_flat_stats(x2hat_cpu, sum_feat_x2hat, sumsq_feat_x2hat)
-
+            sum_feat_x2hat, sumsq_feat_x2hat = _update_flat_stats(x2hat_cpu, sum_feat_x2hat, sumsq_feat_x2hat)
 
             del x1, x1_hat, x2, x2_hat, preds, data, target
             torch.cuda.empty_cache()
 
-
     preds_all_np = np.concatenate(preds_all, axis=0) if len(preds_all) > 0 else np.zeros((0, 256, 256), dtype=np.int32)
     targets_all_np = np.concatenate(targets_all, axis=0) if len(targets_all) > 0 else np.zeros((0, 256, 256), dtype=np.int32)
 
-
     seg_metrics = compute_segmentation_metrics_all(preds_all_np, targets_all_np, num_classes)
-
 
     if n_samples == 0:
         n_samples = 1
+
     recon_x1 = {
         "mse": mse_sum_x1 / n_samples,
         "psnr": psnr_sum_x1 / n_samples,
@@ -1283,14 +1150,11 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
         "fid": None
     }
 
-
     def _compute_diag_fid(sum_a, sumsq_a, sum_b, sumsq_b, n):
-
         mu_a = sum_a / n
         mu_b = sum_b / n
         var_a = (sumsq_a / n) - (mu_a ** 2)
         var_b = (sumsq_b / n) - (mu_b ** 2)
-
         var_a = np.maximum(var_a, 1e-6)
         var_b = np.maximum(var_b, 1e-6)
         diff = mu_a - mu_b
@@ -1299,21 +1163,54 @@ def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, e
         return float(term1 + term2)
 
     try:
-        if sum_feat_x1 is not None and sum_feat_x1hat is not None:
-            recon_x1['fid'] = _compute_diag_fid(sum_feat_x1, sumsq_feat_x1, sum_feat_x1hat, sumsq_feat_x1hat, n_samples)
-        if sum_feat_x2 is not None and sum_feat_x2hat is not None:
-            recon_x2['fid'] = _compute_diag_fid(sum_feat_x2, sumsq_feat_x2, sum_feat_x2hat, sumsq_feat_x2hat, n_samples)
+        if sum_feat_x1 is not None and sumsq_feat_x1 is not None and sum_feat_x1hat is not None and sumsq_feat_x1hat is not None:
+            recon_x1["fid"] = _compute_diag_fid(sum_feat_x1, sumsq_feat_x1, sum_feat_x1hat, sumsq_feat_x1hat, n_samples)
+        if sum_feat_x2 is not None and sumsq_feat_x2 is not None and sum_feat_x2hat is not None and sumsq_feat_x2hat is not None:
+            recon_x2["fid"] = _compute_diag_fid(sum_feat_x2, sumsq_feat_x2, sum_feat_x2hat, sumsq_feat_x2hat, n_samples)
     except Exception:
-        recon_x1['fid'] = None
-        recon_x2['fid'] = None
+        recon_x1["fid"] = None
+        recon_x2["fid"] = None
 
-    summary = {
+    return {
         "seg": seg_metrics,
         "recon_x1": recon_x1,
         "recon_x2": recon_x2,
         "n_samples": n_samples
     }
-    return summary
+
+
+def get_transforms(task_name):
+    return A.Compose([
+        A.Resize(256, 256),
+        A.Normalize(mean=[0] * 3, std=[1] * 3, max_pixel_value=255.0),
+        ToTensorV2()
+    ])
+
+
+def plot_curves(round_num):
+    dataset_names = ["Blastocysts", "HAM10K", "Fetus", "MosMed", "Kvasir"]
+    rounds = list(range(1, round_num + 1))
+    plt.figure(figsize=(10, 5))
+    for i in range(NUM_CLIENTS):
+        plt.plot(rounds, test_iou_wbg_all[i], label=dataset_names[i])
+    plt.xlabel("Communication Round")
+    plt.ylabel("IoU w/b")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("Outputs/mucald_unet_final_wb.png")
+    plt.close()
+
+    plt.figure(figsize=(10, 5))
+    for i in range(NUM_CLIENTS):
+        plt.plot(rounds, test_iou_nbg_all[i], label=dataset_names[i])
+    plt.xlabel("Communication Round")
+    plt.ylabel("IoU n/b")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("Outputs/mucald_unet_final_nb.png")
+    plt.close()
 
 
 def main():
@@ -1335,13 +1232,13 @@ def main():
                             "val": os.path.join(PROXY_DATA_PATH, "Mosmed", "mosmed_val.csv"),
                             "test": os.path.join(PROXY_DATA_PATH, "Mosmed", "mosmed_test.csv")}},
         4: {"name": "Kvasir", "num_classes": 2, "path": DATA_PATH, "dataset": CVCDataset,
-            "proxy_paths": {"train": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_train.csv"),
-                            "val": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_val.csv"),
-                            "test": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_test.csv")}}
+            "proxy_paths": {"train": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_train.csv"),
+                            "val": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_val.csv"),
+                            "test": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_test.csv")}}
     }
 
+    global_SS = UNET_server(in_channels=32).to(DEVICE)
 
-    global_SS = UNET_server(in_channels=64).to(DEVICE)
     global_exo1 = None
     global_exo2 = None
     global_scm1 = None
@@ -1349,20 +1246,16 @@ def main():
     global_den1 = None
     global_den2 = None
 
-
     global_exo_template1, global_exo_template2 = None, None
     global_scm_template1, global_scm_template2 = None, None
     global_den_template1, global_den_template2 = None, None
 
     client_FE = [None] * NUM_CLIENTS
     client_BE = [None] * NUM_CLIENTS
-    client_dom1 = [None] * NUM_CLIENTS
-    client_dom2 = [None] * NUM_CLIENTS
-    client_scm1 = [None] * NUM_CLIENTS  
-    client_scm2 = [None] * NUM_CLIENTS  
+    client_scm1 = [None] * NUM_CLIENTS
+    client_scm2 = [None] * NUM_CLIENTS
 
     best_loss = float("inf")
-
 
     alias_map_by_task = {
         "Blastocyst": {
@@ -1428,26 +1321,22 @@ def main():
             nodes, parents, node_dims = cfg["nodes"], cfg["parents"], cfg["node_dims"]
             cond_dim = sum(node_dims)
 
-
             if global_exo1 is None:
-                global_exo_template1 = ExogenousEncoder(in_channels=64, node_dims=node_dims, variational=True).to(DEVICE)
-                global_exo_template2 = ExogenousEncoder(in_channels=256, node_dims=node_dims, variational=True).to(DEVICE)
-            
+                global_exo_template1 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(DEVICE)
+                global_exo_template2 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(DEVICE)
                 global_scm_template1 = NeuralSCM(parents=parents, node_dims=node_dims).to(DEVICE)
                 global_scm_template1.node_names = nodes
                 global_scm_template2 = NeuralSCM(parents=parents, node_dims=node_dims).to(DEVICE)
                 global_scm_template2.node_names = nodes
-            
-                global_den_template1 = initialize_conditional_denoiser(64, cond_dim, 128, DEVICE)
-                global_den_template2 = initialize_conditional_denoiser(256, cond_dim, 128, DEVICE)
+                global_den_template1 = initialize_conditional_denoiser(32, cond_dim, 128, DEVICE)
+                global_den_template2 = initialize_conditional_denoiser(32, cond_dim, 128, DEVICE)
 
                 global_exo1, global_exo2 = copy.deepcopy(global_exo_template1), copy.deepcopy(global_exo_template2)
                 global_scm1, global_scm2 = copy.deepcopy(global_scm_template1), copy.deepcopy(global_scm_template2)
                 global_den1, global_den2 = copy.deepcopy(global_den_template1), copy.deepcopy(global_den_template2)
 
-
             if client_FE[i] is None:
-                FE, BE = UNET_FE(in_channels=3).to(DEVICE), UNET_BE(in_channels=64, n_classes=num_classes).to(DEVICE)
+                FE, BE = UNET_FE(in_channels=3).to(DEVICE), UNET_BE(out_channels=num_classes).to(DEVICE)
                 client_FE[i], client_BE[i] = FE, BE
             else:
                 FE, BE = client_FE[i].to(DEVICE), client_BE[i].to(DEVICE)
@@ -1455,9 +1344,9 @@ def main():
             SS = copy.deepcopy(global_SS)
             exo1 = copy.deepcopy(global_exo1)
             exo2 = copy.deepcopy(global_exo2)
-            scm1 = copy.deepcopy(global_scm1);
+            scm1 = copy.deepcopy(global_scm1)
             scm1.node_names = nodes
-            scm2 = copy.deepcopy(global_scm2);
+            scm2 = copy.deepcopy(global_scm2)
             scm2.node_names = nodes
             denoiser1 = copy.deepcopy(global_den1)
             denoiser2 = copy.deepcopy(global_den2)
@@ -1465,15 +1354,6 @@ def main():
             client_scm1[i] = scm1
             client_scm2[i] = scm2
 
-
-            if client_dom1[i] is None:
-                dom_disc1 = DomainDiscriminator(in_dim=64, num_domains=NUM_CLIENTS, hidden_dim=128).to(DEVICE)
-                dom_disc2 = DomainDiscriminator(in_dim=256, num_domains=NUM_CLIENTS, hidden_dim=128).to(DEVICE)
-                client_dom1[i], client_dom2[i] = dom_disc1, dom_disc2
-            else:
-                dom_disc1, dom_disc2 = client_dom1[i].to(DEVICE), client_dom2[i].to(DEVICE)
-
-            dom_opt = optim.Adam(list(dom_disc1.parameters()) + list(dom_disc2.parameters()), lr=1e-4)
             opt = optim.AdamW([
                 {"params": list(FE.parameters()) + list(BE.parameters()) + list(SS.parameters()), "lr": 1e-4},
                 {"params": list(exo1.parameters()) + list(scm1.parameters()) +
@@ -1483,9 +1363,13 @@ def main():
 
             loss_fn = ComboLoss(num_classes)
 
-            tr_tf, val_tf = get_transforms(task_name), A.Compose([
-                A.Resize(256, 256), A.Normalize(mean=[0] * 3, std=[1] * 3, max_pixel_value=255.0), ToTensorV2()
+            tr_tf = get_transforms(task_name)
+            val_tf = A.Compose([
+                A.Resize(256, 256),
+                A.Normalize(mean=[0] * 3, std=[1] * 3, max_pixel_value=255.0),
+                ToTensorV2()
             ])
+
             train_loader = get_loader(os.path.join(path, f"client{i + 1}/train_imgs"),
                                       os.path.join(path, f"client{i + 1}/train_masks"),
                                       ds_class, tr_tf, with_names=True, shuffle=True, fraction=1.0)
@@ -1502,13 +1386,15 @@ def main():
             train_proxy = ProxyTable(ptrain, nodes, zscore=True, alias_map=alias_map) if ptrain else ProxyTable(None, nodes)
             val_proxy = ProxyTable(pval, nodes, zscore=True, alias_map=alias_map) if pval else ProxyTable(None, nodes)
             test_proxy = ProxyTable(ptest, nodes, zscore=True, alias_map=alias_map) if ptest else ProxyTable(None, nodes)
-            train_local(train_loader, FE, SS, BE,
-                        denoiser1, denoiser2, exo1, scm1, exo2, scm2,
-                        dom_disc1, dom_disc2,
-                        opt, dom_opt, loss_fn, i + 1, num_classes,
-                        task_name, train_proxy,
-                        fallback_state=global_SS.state_dict(),
-                        client_size=len(train_loader.dataset), max_size=max_size)
+
+            train_local(
+                train_loader, FE, SS, BE,
+                denoiser1, denoiser2, exo1, scm1, exo2, scm2,
+                opt, loss_fn, i + 1, num_classes,
+                task_name, train_proxy,
+                fallback_state=global_SS.state_dict(),
+                client_size=len(train_loader.dataset), max_size=max_size
+            )
 
             val_loss, _, _, _, proxy_mse = evaluate(
                 val_loader, FE, SS, BE,
@@ -1534,13 +1420,12 @@ def main():
             val_proxies_round.append(val_proxy)
             test_proxies_round.append(test_proxy)
 
-        if r < 24: 
+        if r < 24:
             global_SS.load_state_dict(equal_weight_fusion(local_SS))
             global_exo1.load_state_dict(equal_weight_fusion(local_exo1))
             global_exo2.load_state_dict(equal_weight_fusion(local_exo2))
             global_den1.load_state_dict(equal_weight_fusion(local_den1))
             global_den2.load_state_dict(equal_weight_fusion(local_den2))
-
         else:
             global_SS.load_state_dict(causal_invariant_fusion(local_SS, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
             global_exo1.load_state_dict(causal_invariant_fusion(local_exo1, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
@@ -1563,9 +1448,10 @@ def main():
                                     os.path.join(task["path"], f"client{i + 1}/val_masks"),
                                     ds_class, val_tf, with_names=True, shuffle=False, fraction=1.0)
             loss_fn = ComboLoss(num_classes)
+
             val_loss, val_acc, val_iou_wb, val_iou_nb, _ = evaluate(
                 val_loader, client_FEs_round[i], global_SS, client_BEs_round[i],
-                global_den1, global_den2, global_exo1, client_scm1[i], global_exo2, client_scm1[i],
+                global_den1, global_den2, global_exo1, client_scm1[i], global_exo2, client_scm2[i],
                 loss_fn, num_classes,
                 proxy_table=val_proxy,
                 task_name=task_name
@@ -1580,13 +1466,13 @@ def main():
 
         if avg_val_loss < best_loss:
             best_loss = avg_val_loss
-            torch.save(global_SS.state_dict(), "BestModels/unet3plusmu_SS.pth")
-            torch.save(global_exo1.state_dict(), "BestModels/unet3plusmu_exo1.pth")
-            torch.save(global_exo2.state_dict(), "BestModels/unet3plusmu_exo2.pth")
-            torch.save(global_scm1.state_dict(), "BestModels/unet3plusmu_scm1.pth")
-            torch.save(global_scm2.state_dict(), "BestModels/unet3plusmu_scm2.pth")
-            torch.save(global_den1.state_dict(), "BestModels/unet3plusmu_den1.pth")
-            torch.save(global_den2.state_dict(), "BestModels/unet3plusmu_den2.pth")
+            torch.save(global_SS.state_dict(), "BestModels/MTS5_best_CRDM_only_SS.pth")
+            torch.save(global_exo1.state_dict(), "BestModels/MTS5_best_CRDM_only_exo1.pth")
+            torch.save(global_exo2.state_dict(), "BestModels/MTS5_best_CRDM_only_exo2.pth")
+            torch.save(global_scm1.state_dict(), "BestModels/MTS5_best_CRDM_only_scm1.pth")
+            torch.save(global_scm2.state_dict(), "BestModels/MTS5_best_CRDM_only_scm2.pth")
+            torch.save(global_den1.state_dict(), "BestModels/MTS5_best_CRDM_only_den1.pth")
+            torch.save(global_den2.state_dict(), "BestModels/MTS5_best_CRDM_only_den2.pth")
             print("[Best Global Models Saved]")
 
         for i in range(NUM_CLIENTS):
@@ -1596,8 +1482,7 @@ def main():
             ds_class = task["dataset"]
             cfg = get_scm_config(task_name)
             nodes = cfg["nodes"]
-            alias_map = alias_map_by_task.get(task_name, {}) 
-
+            alias_map = alias_map_by_task.get(task_name, {})
             path = task["path"]
 
             test_proxy = ProxyTable(task["proxy_paths"]["test"], nodes, zscore=True, alias_map=alias_map)
@@ -1616,7 +1501,6 @@ def main():
             test_iou_wbg_all[i].append(sum(test_iou_wb) / num_classes)
             test_iou_nbg_all[i].append(sum(test_iou_nb) / (num_classes - 1))
 
-
             save_test_images(
                 test_loader,
                 client_FEs_round[i],
@@ -1629,16 +1513,18 @@ def main():
                 global_exo2,
                 client_scm2[i],
                 num_classes=num_classes,
-                out_dir_root="Outputs/unet3plus_mucald_test_preds",
+                out_dir_root="Outputs/unet_mucald_test_preds_CRDMonly",
                 cid=i + 1
             )
 
             print(f"[Client {i + 1}] Computing detailed metrics (segmentation + latent reconstructions)...")
-            metrics = compute_full_metrics(test_loader,
-                                           client_FEs_round[i], global_SS, client_BEs_round[i],
-                                           global_den1, global_den2, global_exo1, client_scm1[i],
-                                           global_exo2, client_scm2[i],
-                                           num_classes=num_classes, device=DEVICE)
+            metrics = compute_full_metrics(
+                test_loader,
+                client_FEs_round[i], global_SS, client_BEs_round[i],
+                global_den1, global_den2, global_exo1, client_scm1[i],
+                global_exo2, client_scm2[i],
+                num_classes=num_classes, device=DEVICE
+            )
 
             seg = metrics["seg"]
             recon1 = metrics["recon_x1"]
@@ -1657,8 +1543,8 @@ def main():
             mean_f1 = float(np.mean(seg['f1']))
             mean_HD95 = float(np.mean(seg['hd95']))
             mean_ASSD = float(np.mean(seg['assd']))
-            
-            print(f"Summary: mean IoU (w/bg)={mean_iou_wbg:.4f}, mean IoU (no/bg)={mean_iou_nbg:.4f}, mean Dice={mean_dice:.4f}, mean P={mean_P:.4f}, mean R={mean_R:.4f}, mean F1={mean_f1:.4f}, mean hd95={mean_HD95:.4f}, mean ASSD={mean_ASSD:.4f}, ")
+
+            print(f"Summary: mean IoU (w/bg)={mean_iou_wbg:.4f}, mean IoU (no/bg)={mean_iou_nbg:.4f}, mean Dice={mean_dice:.4f}, mean P={mean_P:.4f}, mean R={mean_R:.4f}, mean F1={mean_f1:.4f}, mean hd95={mean_HD95:.4f}, mean ASSD={mean_ASSD:.4f}")
 
             print(f"--- Client {i+1} ({task_name}) Reconstruction (latent) summary ---")
             print(f"x1 (split1)   : MSE={recon1['mse']:.6f} | PSNR={recon1['psnr']:.4f} | SSIM={recon1['ssim']:.4f} | FID={recon1['fid']}")
@@ -1669,6 +1555,7 @@ def main():
                 print("LPIPS: package not available, skipped.")
 
         plot_curves(r + 1)
+
 
 if __name__ == "__main__":
     main()

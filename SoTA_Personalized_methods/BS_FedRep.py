@@ -23,7 +23,7 @@ from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 from skimage.metrics import structural_similarity as sk_ssim
 
 import sys
-output_file = "XXXXX/causalenv/BS_FedRep.txt"
+output_file = "XXXXX/xxxx/BS_FedRep.txt"
 sys.stdout = open(output_file, "w")
 
 

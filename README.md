@@ -73,7 +73,8 @@ We also performed below ablation studies to better isolate the contribution of e
 - CRDM only (without DACA)
 - DACA only (without CRDM)
 - Causal graph discovery disabled (Neural-SCM replaced with a standard encoder)
-- Diffusion-based obfuscation disabled (forward diffusion removed from CRDM)
+- Diffusion-based obfuscation disabled (diffusion disbaled)
+- Forward noising disabled 
 
 All the results we achieved are added to the "Results_Summary" folder in this repository.
 

@@ -1,6 +1,5 @@
-# mucald_splitfed_ablation_no_diffusion.py
-# Ablation: latent diffusion disabled
-# Copy-paste and run
+# mucald_splitfed_ablation_no_noise.py
+# Ablation 2: keep denoisers, remove stochastic latent diffusion corruption
 
 import os
 import sys
@@ -31,26 +30,34 @@ from scipy import ndimage as ndi
 from skimage.metrics import structural_similarity as sk_ssim
 from skimage.metrics import peak_signal_noise_ratio as sk_psnr
 
+try:
+    import lpips
+    LPIPS_AVAILABLE = True
+except Exception:
+    LPIPS_AVAILABLE = False
+
 from models.clientmodel_FE import UNET_FE
 from models.servermodel import UNET_server
 from models.clientmodel_BE import UNET_BE
 from dataset import EmbryoDataset, HAMDataset, CVCDataset, covidCTDataset, FHPsAOPMSBDataset
+from reverse_diff_causal import initialize_conditional_denoiser
+from models.exogenous_encoder import ExogenousEncoder
+from models.neural_scm import NeuralSCM
 from scm_configs import get_scm_config
 from proxy_tables import ProxyTable
 from dataset_wrappers import WithFilenames
-from models.exogenous_encoder import ExogenousEncoder
-from models.neural_scm import NeuralSCM
+from models.z_prior import ZPrior
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-output_file = "/xxxxxx/causalenv/mucald_ab4_no_diffusion.txt"
+output_file = "/xxxxxx/causalenv/mucald_ab5_no_noise.txt"
 sys.stdout = open(output_file, "w")
 
 PROXY_DATA_PATH = "/xxxxxx/causalenv/Proxy_variables_dir/Final/"
 DATA_PATH = "/xxxxxx/MTS2"
 
-os.makedirs("BestModels", exist_ok=True)
-os.makedirs("Outputs_ab4", exist_ok=True)
+os.makedirs("BestModels_ab5", exist_ok=True)
+os.makedirs("Outputs_ab5", exist_ok=True)
 
 NUM_CLIENTS = 5
 LOCAL_EPOCHS = 5
@@ -69,6 +76,7 @@ LAMBDA_KLZ_TARGET = 1.0e-4
 
 LAMBDA_ADV = 0.10
 LAMBDA_DOM = 0.1
+LAMBDA_DENOISE_ZERO = 0.05  # weak auxiliary pressure so denoisers stay active
 
 PER_CLIENT_ADV_SCALE = {
     1: 1.0,
@@ -112,21 +120,27 @@ class DomainDiscriminator(nn.Module):
         return self.net(x)
 
 
-def as_tensor(x, name="model output"):
+def pick_tensor_output(out, expected_channels=None, name="module"):
     """
-    Unwraps model outputs that may be:
-    - a Tensor
-    - a tuple/list where the first Tensor is the actual feature map
+    If a model returns a tuple/list, pick the tensor output.
+    Preference is given to a tensor with matching channel count.
     """
-    if torch.is_tensor(x):
-        return x
+    if torch.is_tensor(out):
+        return out
 
-    if isinstance(x, (tuple, list)):
-        for item in x:
-            if torch.is_tensor(item):
-                return item
+    if isinstance(out, (tuple, list)):
+        tensor_items = [x for x in out if torch.is_tensor(x)]
+        if not tensor_items:
+            raise TypeError(f"{name} returned {type(out)} but no tensor was found inside it.")
 
-    raise TypeError(f"{name} must be a Tensor, but got {type(x)}")
+        if expected_channels is not None:
+            for t in tensor_items:
+                if t.dim() >= 2 and t.shape[1] == expected_channels:
+                    return t
+
+        return tensor_items[0]
+
+    raise TypeError(f"{name} returned unsupported type: {type(out)}")
 
 
 def get_epoch_lambdas(ep: int):
@@ -145,11 +159,6 @@ def get_epoch_lambdas(ep: int):
         LAMBDA_KLU_TARGET,
         LAMBDA_KLZ_TARGET,
     )
-
-
-def extract_into(arr_1d, timesteps, x_shape):
-    out = arr_1d.gather(0, timesteps.clamp_(0, arr_1d.shape[0] - 1))
-    return out.view(-1, *([1] * (len(x_shape) - 1)))
 
 
 def kl_standard_normal(mu, logvar):
@@ -245,8 +254,7 @@ def _mask_to_surface(mask):
     if mask.sum() == 0:
         return np.zeros_like(mask, dtype=bool)
     eroded = ndi.binary_erosion(mask, structure=np.ones((3, 3)))
-    surface = mask.astype(bool) & (~eroded)
-    return surface
+    return mask.astype(bool) & (~eroded)
 
 
 def _surface_distances(mask_gt, mask_pred):
@@ -391,8 +399,8 @@ def get_loader(img_dir, mask_dir, dataset_class, transform,
 
 
 def causal_invariant_fusion(
-        models, proxy_mse_scores, client_sizes=None, val_losses=None,
-        eps=1e-8, min_fraction=0.25, blend_equal=0.5
+    models, proxy_mse_scores, client_sizes=None, val_losses=None,
+    eps=1e-8, min_fraction=0.25, blend_equal=0.5
 ):
     ref_sd = models[0].state_dict()
     model_sds = [m.state_dict() for m in models]
@@ -466,7 +474,7 @@ def plot_curves(round_num):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("Outputs/mucald_wb_ab4_no_diffusion.png")
+    plt.savefig("Outputs/mucald_unet_final_wb_ablation_no_noise.png")
     plt.close()
 
     plt.figure(figsize=(10, 5))
@@ -477,19 +485,30 @@ def plot_curves(round_num):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("Outputs/mucald_nb_ab4_no_diffusion.png")
+    plt.savefig("Outputs/mucald_unet_final_nb_ablation_no_noise.png")
     plt.close()
 
 
+def zero_target_denoiser_loss(denoiser, x, z_cond):
+    B = x.size(0)
+    t_vec = torch.zeros(B, device=x.device, dtype=torch.long)
+    eps_pred = denoiser(x, t_vec, z_cond)
+    return F.mse_loss(eps_pred, torch.zeros_like(eps_pred))
+
+
 def train_local(loader, FE, SS, BE,
+                denoiser1, denoiser2,
                 exo1, scm1, exo2, scm2,
                 dom_disc1, dom_disc2,
                 opt, dom_opt, loss_fn, cid, num_classes,
                 task_name, proxy_table: ProxyTable,
                 fallback_state=None, mask_thresh=1e-5, client_size=None, max_size=None):
+
     FE.train()
     SS.train()
     BE.train()
+    denoiser1.train()
+    denoiser2.train()
     exo1.train()
     scm1.train()
     exo2.train()
@@ -498,6 +517,8 @@ def train_local(loader, FE, SS, BE,
     dom_disc2.train()
 
     ss_grad = make_grad_tracker(SS)
+    d1_grad = make_grad_tracker(denoiser1)
+    d2_grad = make_grad_tracker(denoiser2)
     num_updates = 0
 
     if client_size is not None and max_size is not None:
@@ -521,7 +542,7 @@ def train_local(loader, FE, SS, BE,
         scale = PER_CLIENT_ADV_SCALE.get(cid, 1.0)
         lam_adv = lam_adv * scale
 
-        print(f"[Sched] ep={ep + 1}/{LOCAL_EPOCHS} | proxy={lam_proxy:.3g}, KLu={lam_klu:.3g}, KLz={lam_klz:.3g}")
+        print(f"[Sched] ep={ep+1}/{LOCAL_EPOCHS} | proxy={lam_proxy:.3g}, KLu={lam_klu:.3g}, KLz={lam_klz:.3g}")
 
         tloss = 0.0
         tcorrect = 0.0
@@ -544,24 +565,23 @@ def train_local(loader, FE, SS, BE,
             data, target = data.to(DEVICE), target.long().to(DEVICE)
             B = data.size(0)
 
-            x1 = as_tensor(FE(data), "FE(data)")
-
+            x1 = pick_tensor_output(FE(data), expected_channels=32, name="FE")
             u_list_1, u_mu_1, u_lv_1 = exo1(x1)
             z_list_1 = scm1(u_list_1)
             z_causal_1 = scm1.as_vector(z_list_1)
 
-            # Ablation: diffusion disabled -> identity passthrough
+            den_loss1 = zero_target_denoiser_loss(denoiser1, x1, z_causal_1.detach())
             x1_hat = x1
 
-            x2 = as_tensor(SS(x1_hat), "SS(x1_hat)")
+            x2 = pick_tensor_output(SS(x1_hat), expected_channels=32, name="SS")
             u_list_2, u_mu_2, u_lv_2 = exo2(x2)
             z_list_2 = scm2(u_list_2)
             z_causal_2 = scm2.as_vector(z_list_2)
 
-            # Ablation: diffusion disabled -> identity passthrough
+            den_loss2 = zero_target_denoiser_loss(denoiser2, x2, z_causal_2.detach())
             x2_hat = x2
 
-            preds = as_tensor(BE(x2_hat), "BE(x2_hat)")
+            preds = BE(x2_hat)
             seg_loss = loss_fn(preds, target)
 
             proxy_loss1 = 0.0
@@ -637,11 +657,12 @@ def train_local(loader, FE, SS, BE,
             dom_loss2 = F.cross_entropy(dom_logits2, domain_labels)
 
             loss = (
-                    seg_weight * seg_loss
-                    + lam_proxy * (proxy_loss1 + proxy_loss2)
-                    + lam_klu * kl_u
-                    + lam_klz * kl_z
-                    + (adv_weight * lam_adv) * (adv_loss1 + adv_loss2)
+                seg_weight * seg_loss
+                + lam_proxy * (proxy_loss1 + proxy_loss2)
+                + lam_klu * kl_u
+                + lam_klz * kl_z
+                + (adv_weight * lam_adv) * (adv_loss1 + adv_loss2)
+                + LAMBDA_DENOISE_ZERO * (den_loss1 + den_loss2)
             )
 
             prox_term = 0.0
@@ -660,6 +681,12 @@ def train_local(loader, FE, SS, BE,
                 for name, p in SS.named_parameters():
                     if p.grad is not None:
                         ss_grad[name].add_(p.grad.abs())
+                for name, p in denoiser1.named_parameters():
+                    if p.grad is not None:
+                        d1_grad[name].add_(p.grad.abs())
+                for name, p in denoiser2.named_parameters():
+                    if p.grad is not None:
+                        d2_grad[name].add_(p.grad.abs())
 
             opt.step()
 
@@ -700,14 +727,16 @@ def train_local(loader, FE, SS, BE,
                 mse2 = proxy_sq_sum_s2[nname] / n2 if n2 > 0 else None
                 parts1.append(f"{nname}={mse1:.4f} (n={n1})" if mse1 is not None else f"{nname}=NA (n=0)")
                 parts2.append(f"{nname}={mse2:.4f} (n={n2})" if mse2 is not None else f"{nname}=NA (n=0)")
-            print(f"[{task_name} | Client {cid}] Proxy MSE (Split-1, epoch {ep + 1}): " + ", ".join(parts1))
-            print(f"[{task_name} | Client {cid}] Proxy MSE (Split-2, epoch {ep + 1}): " + ", ".join(parts2))
+            print(f"[{task_name} | Client {cid}] Proxy MSE (Split-1, epoch {ep+1}): " + ", ".join(parts1))
+            print(f"[{task_name} | Client {cid}] Proxy MSE (Split-2, epoch {ep+1}): " + ", ".join(parts2))
 
     ss_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in ss_grad.items()}
-    return ss_mask, None, None
+    d1_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in d1_grad.items()}
+    d2_mask = {name: (g / max(num_updates, 1) > mask_thresh).float() for name, g in d2_grad.items()}
 
+    return ss_mask, d1_mask, d2_mask
 
-def evaluate(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
+def evaluate(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
              loss_fn, num_classes,
              proxy_table: ProxyTable,
              task_name: str = "",
@@ -730,21 +759,22 @@ def evaluate(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
 
             data, target = data.to(DEVICE), target.long().to(DEVICE)
 
-            x1 = as_tensor(FE(data), "FE(data)")
+            x1 = pick_tensor_output(FE(data), expected_channels=32, name="FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
 
-            # Ablation: no diffusion
+            t0 = torch.zeros(data.size(0), device=DEVICE, dtype=torch.long)
+            _ = denoiser1(x1, t0, scm1.as_vector(z_list_1))
             x1_hat = x1
 
-            x2 = as_tensor(SS(x1_hat), "SS(x1_hat)")
+            x2 = pick_tensor_output(SS(x1_hat), expected_channels=32, name="SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
 
-            # Ablation: no diffusion
+            _ = denoiser2(x2, t0, scm2.as_vector(z_list_2))
             x2_hat = x2
 
-            preds = as_tensor(BE(x2_hat), "BE(x2_hat)")
+            preds = BE(x2_hat)
             seg_loss = loss_fn(preds, target)
 
             if proxy_table is not None and proxy_table.enabled:
@@ -767,9 +797,7 @@ def evaluate(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
             ious = jaccard_score(
                 target.detach().cpu().flatten(),
                 preds_lbl.detach().cpu().flatten(),
-                average=None,
-                labels=list(range(num_classes)),
-                zero_division=0
+                average=None, labels=list(range(num_classes)), zero_division=0
             )
             for i in range(num_classes):
                 iou_c[i] += float(ious[i])
@@ -800,7 +828,7 @@ def evaluate(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
     return total_loss / max(num_batches, 1), acc, avg_iou, avg_iou[1:], proxy_mse
 
 
-def save_test_images(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
+def save_test_images(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
                      num_classes, out_dir_root="Outputs/unet_mucald_test_preds", cid=1):
     out_dir = os.path.join(out_dir_root, f"client{cid}")
     os.makedirs(out_dir, exist_ok=True)
@@ -815,22 +843,22 @@ def save_test_images(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
                 fnames = [str(i) for i in range(data.size(0))]
 
             data = data.to(DEVICE)
+            B = data.size(0)
+            t0 = torch.zeros(B, device=DEVICE, dtype=torch.long)
 
-            x1 = as_tensor(FE(data), "FE(data)")
+            x1 = pick_tensor_output(FE(data), expected_channels=32, name="FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
-
-            # Ablation: no diffusion
+            _ = denoiser1(x1, t0, scm1.as_vector(z_list_1))
             x1_hat = x1
 
-            x2 = as_tensor(SS(x1_hat), "SS(x1_hat)")
+            x2 = pick_tensor_output(SS(x1_hat), expected_channels=32, name="SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
-
-            # Ablation: no diffusion
+            _ = denoiser2(x2, t0, scm2.as_vector(z_list_2))
             x2_hat = x2
 
-            preds = as_tensor(BE(x2_hat), "BE(x2_hat)")
+            preds = BE(x2_hat)
             preds_lbl = torch.argmax(preds, dim=1).cpu().numpy()
 
             for b in range(preds_lbl.shape[0]):
@@ -860,8 +888,7 @@ def save_test_images(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
 
                 img.save(out_path)
 
-
-def compute_full_metrics(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
+def compute_full_metrics(loader, FE, SS, BE, denoiser1, denoiser2, exo1, scm1, exo2, scm2,
                          num_classes, device=DEVICE):
     preds_all = []
     targets_all = []
@@ -885,6 +912,13 @@ def compute_full_metrics(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
     sum_feat_x2hat = None
     sumsq_feat_x2hat = None
 
+    lpips_fn = None
+    if LPIPS_AVAILABLE:
+        try:
+            lpips_fn = lpips.LPIPS(net='alex').to("cpu")
+        except Exception:
+            lpips_fn = None
+
     with torch.no_grad():
         for batch in loader:
             if len(batch) == 3:
@@ -895,23 +929,23 @@ def compute_full_metrics(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
             data = data.to(device)
             target = target.long().to(device)
 
-            x1 = as_tensor(FE(data), "FE(data)")
+            B = data.size(0)
+            t0 = torch.zeros(B, device=device, dtype=torch.long)
+
+            x1 = pick_tensor_output(FE(data), expected_channels=32, name="FE")
             u_list_1, _, _ = exo1(x1)
             z_list_1 = scm1(u_list_1)
-
-            # Ablation: no diffusion
+            _ = denoiser1(x1, t0, scm1.as_vector(z_list_1))
             x1_hat = x1
 
-            x2 = as_tensor(SS(x1_hat), "SS(x1_hat)")
+            x2 = pick_tensor_output(SS(x1_hat), expected_channels=32, name="SS")
             u_list_2, _, _ = exo2(x2)
             z_list_2 = scm2(u_list_2)
-
-            # Ablation: no diffusion
+            _ = denoiser2(x2, t0, scm2.as_vector(z_list_2))
             x2_hat = x2
 
-            preds = as_tensor(BE(x2_hat), "BE(x2_hat)")
+            preds = BE(x2_hat)
             preds_lbl = torch.argmax(preds, dim=1).cpu().numpy()
-
             targets_np = target.cpu().numpy()
 
             preds_all.append(preds_lbl)
@@ -985,8 +1019,7 @@ def compute_full_metrics(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
                 torch.cuda.empty_cache()
 
     preds_all_np = np.concatenate(preds_all, axis=0) if len(preds_all) > 0 else np.zeros((0, 256, 256), dtype=np.int32)
-    targets_all_np = np.concatenate(targets_all, axis=0) if len(targets_all) > 0 else np.zeros((0, 256, 256),
-                                                                                               dtype=np.int32)
+    targets_all_np = np.concatenate(targets_all, axis=0) if len(targets_all) > 0 else np.zeros((0, 256, 256), dtype=np.int32)
 
     seg_metrics = compute_segmentation_metrics_all(preds_all_np, targets_all_np, num_classes)
 
@@ -1032,7 +1065,6 @@ def compute_full_metrics(loader, FE, SS, BE, exo1, scm1, exo2, scm2,
         "n_samples": n_samples
     }
 
-
 def main():
     task_info = {
         0: {"name": "Blastocyst", "num_classes": 5, "path": DATA_PATH, "dataset": EmbryoDataset,
@@ -1052,9 +1084,9 @@ def main():
                             "val": os.path.join(PROXY_DATA_PATH, "Mosmed", "mosmed_val.csv"),
                             "test": os.path.join(PROXY_DATA_PATH, "Mosmed", "mosmed_test.csv")}},
         4: {"name": "Kvasir", "num_classes": 2, "path": DATA_PATH, "dataset": CVCDataset,
-            "proxy_paths": {"train": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_train.csv"),
-                            "val": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_val.csv"),
-                            "test": os.path.join(PROXY_DATA_PATH, "KvasirSEG", "kvasir_test.csv")}}
+            "proxy_paths": {"train": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_train.csv"),
+                            "val": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_val.csv"),
+                            "test": os.path.join(PROXY_DATA_PATH, "Kvasir-SEG", "kvasir_test.csv")}}
     }
 
     global_SS = UNET_server(in_channels=32).to(DEVICE)
@@ -1062,6 +1094,8 @@ def main():
     global_exo2 = None
     global_scm1 = None
     global_scm2 = None
+    global_den1 = None
+    global_den2 = None
 
     client_FE = [None] * NUM_CLIENTS
     client_BE = [None] * NUM_CLIENTS
@@ -1122,6 +1156,7 @@ def main():
 
         local_SS, local_exo1, local_exo2 = [], [], []
         local_scm1, local_scm2 = [], []
+        local_den1, local_den2 = [], []
         client_FEs_round, client_BEs_round = [], []
         val_proxies_round, test_proxies_round = [], []
 
@@ -1133,19 +1168,21 @@ def main():
 
             cfg = get_scm_config(task_name)
             nodes, parents, node_dims = cfg["nodes"], cfg["parents"], cfg["node_dims"]
+            cond_dim = sum(node_dims)
 
             if global_exo1 is None:
-                global_exo_template1 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(
-                    DEVICE)
-                global_exo_template2 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(
-                    DEVICE)
+                global_exo_template1 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(DEVICE)
+                global_exo_template2 = ExogenousEncoder(in_channels=32, node_dims=node_dims, variational=True).to(DEVICE)
                 global_scm_template1 = NeuralSCM(parents=parents, node_dims=node_dims).to(DEVICE)
                 global_scm_template1.node_names = nodes
                 global_scm_template2 = NeuralSCM(parents=parents, node_dims=node_dims).to(DEVICE)
                 global_scm_template2.node_names = nodes
+                global_den_template1 = initialize_conditional_denoiser(32, cond_dim, 128, DEVICE)
+                global_den_template2 = initialize_conditional_denoiser(32, cond_dim, 128, DEVICE)
 
                 global_exo1, global_exo2 = copy.deepcopy(global_exo_template1), copy.deepcopy(global_exo_template2)
                 global_scm1, global_scm2 = copy.deepcopy(global_scm_template1), copy.deepcopy(global_scm_template2)
+                global_den1, global_den2 = copy.deepcopy(global_den_template1), copy.deepcopy(global_den_template2)
 
             if client_FE[i] is None:
                 FE, BE = UNET_FE(in_channels=3).to(DEVICE), UNET_BE(out_channels=num_classes).to(DEVICE)
@@ -1160,9 +1197,13 @@ def main():
             scm1.node_names = nodes
             scm2 = copy.deepcopy(global_scm2)
             scm2.node_names = nodes
+            denoiser1 = copy.deepcopy(global_den1)
+            denoiser2 = copy.deepcopy(global_den2)
 
             client_scm1[i] = scm1
             client_scm2[i] = scm2
+            local_den1.append(denoiser1)
+            local_den2.append(denoiser2)
 
             if client_dom1[i] is None:
                 dom_disc1, dom_disc2 = DomainDiscriminator().to(DEVICE), DomainDiscriminator().to(DEVICE)
@@ -1175,6 +1216,7 @@ def main():
                 {"params": list(FE.parameters()) + list(BE.parameters()) + list(SS.parameters()), "lr": 1e-4},
                 {"params": list(exo1.parameters()) + list(scm1.parameters()) +
                            list(exo2.parameters()) + list(scm2.parameters()), "lr": 5e-5},
+                {"params": list(denoiser1.parameters()) + list(denoiser2.parameters()), "lr": 1e-4},
             ])
 
             loss_fn = ComboLoss(num_classes)
@@ -1198,13 +1240,12 @@ def main():
             ptrain, pval, ptest = task["proxy_paths"]["train"], task["proxy_paths"]["val"], task["proxy_paths"]["test"]
             alias_map = alias_map_by_task.get(task_name, {})
 
-            train_proxy = ProxyTable(ptrain, nodes, zscore=True, alias_map=alias_map) if ptrain else ProxyTable(None,
-                                                                                                                nodes)
+            train_proxy = ProxyTable(ptrain, nodes, zscore=True, alias_map=alias_map) if ptrain else ProxyTable(None, nodes)
             val_proxy = ProxyTable(pval, nodes, zscore=True, alias_map=alias_map) if pval else ProxyTable(None, nodes)
-            test_proxy = ProxyTable(ptest, nodes, zscore=True, alias_map=alias_map) if ptest else ProxyTable(None,
-                                                                                                             nodes)
+            test_proxy = ProxyTable(ptest, nodes, zscore=True, alias_map=alias_map) if ptest else ProxyTable(None, nodes)
 
             train_local(train_loader, FE, SS, BE,
+                        denoiser1, denoiser2,
                         exo1, scm1, exo2, scm2,
                         dom_disc1, dom_disc2,
                         opt, dom_opt, loss_fn, i + 1, num_classes,
@@ -1214,6 +1255,7 @@ def main():
 
             val_loss, _, _, _, proxy_mse = evaluate(
                 val_loader, FE, SS, BE,
+                denoiser1, denoiser2,
                 exo1, scm1, exo2, scm2,
                 loss_fn, num_classes,
                 proxy_table=val_proxy,
@@ -1231,6 +1273,8 @@ def main():
             local_exo2.append(exo2)
             local_scm1.append(scm1)
             local_scm2.append(scm2)
+            local_den1.append(denoiser1)
+            local_den2.append(denoiser2)
             val_proxies_round.append(val_proxy)
             test_proxies_round.append(test_proxy)
 
@@ -1238,16 +1282,14 @@ def main():
             global_SS.load_state_dict(equal_weight_fusion(local_SS))
             global_exo1.load_state_dict(equal_weight_fusion(local_exo1))
             global_exo2.load_state_dict(equal_weight_fusion(local_exo2))
+            global_den1.load_state_dict(equal_weight_fusion(local_den1))
+            global_den2.load_state_dict(equal_weight_fusion(local_den2))
         else:
-            global_SS.load_state_dict(
-                causal_invariant_fusion(local_SS, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25,
-                                        blend_equal=0.5))
-            global_exo1.load_state_dict(
-                causal_invariant_fusion(local_exo1, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25,
-                                        blend_equal=0.5))
-            global_exo2.load_state_dict(
-                causal_invariant_fusion(local_exo2, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25,
-                                        blend_equal=0.5))
+            global_SS.load_state_dict(causal_invariant_fusion(local_SS, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
+            global_exo1.load_state_dict(causal_invariant_fusion(local_exo1, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
+            global_exo2.load_state_dict(causal_invariant_fusion(local_exo2, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
+            global_den1.load_state_dict(causal_invariant_fusion(local_den1, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
+            global_den2.load_state_dict(causal_invariant_fusion(local_den2, proxy_mse_scores, client_sizes, val_losses, min_fraction=0.25, blend_equal=0.5))
 
         total_val_loss, total_val_ious = 0.0, [0.0] * 5
         for i in range(NUM_CLIENTS):
@@ -1266,7 +1308,7 @@ def main():
             loss_fn = ComboLoss(num_classes)
             val_loss, val_acc, val_iou_wb, val_iou_nb, _ = evaluate(
                 val_loader, client_FEs_round[i], global_SS, client_BEs_round[i],
-                global_exo1, client_scm1[i], global_exo2, client_scm2[i],
+                global_den1, global_den2, global_exo1, client_scm1[i], global_exo2, client_scm2[i],
                 loss_fn, num_classes,
                 proxy_table=val_proxy,
                 task_name=task_name
@@ -1281,11 +1323,13 @@ def main():
 
         if avg_val_loss < best_loss:
             best_loss = avg_val_loss
-            torch.save(global_SS.state_dict(), "BestModels/MTS5_best_old_SS_ablation_no_diffusion.pth")
-            torch.save(global_exo1.state_dict(), "BestModels/MTS5_best_old_exo1_ablation_no_diffusion.pth")
-            torch.save(global_exo2.state_dict(), "BestModels/MTS5_best_old_exo2_ablation_no_diffusion.pth")
-            torch.save(global_scm1.state_dict(), "BestModels/MTS5_best_old_scm1_ablation_no_diffusion.pth")
-            torch.save(global_scm2.state_dict(), "BestModels/MTS5_best_old_scm2_ablation_no_diffusion.pth")
+            torch.save(global_SS.state_dict(), "BestModels/MTS5_best_old_SS_no_noise.pth")
+            torch.save(global_exo1.state_dict(), "BestModels/MTS5_best_old_exo1_no_noise.pth")
+            torch.save(global_exo2.state_dict(), "BestModels/MTS5_best_old_exo2_no_noise.pth")
+            torch.save(global_scm1.state_dict(), "BestModels/MTS5_best_old_scm1_no_noise.pth")
+            torch.save(global_scm2.state_dict(), "BestModels/MTS5_best_old_scm2_no_noise.pth")
+            torch.save(global_den1.state_dict(), "BestModels/MTS5_best_old_den1_no_noise.pth")
+            torch.save(global_den2.state_dict(), "BestModels/MTS5_best_old_den2_no_noise.pth")
             print("[Best Global Models Saved]")
 
         for i in range(NUM_CLIENTS):
@@ -1305,7 +1349,7 @@ def main():
             loss_fn = ComboLoss(num_classes)
             test_loss, test_acc, test_iou_wb, test_iou_nb, proxy_mse = evaluate(
                 test_loader, client_FEs_round[i], global_SS, client_BEs_round[i],
-                global_exo1, client_scm1[i], global_exo2, client_scm2[i],
+                global_den1, global_den2, global_exo1, client_scm1[i], global_exo2, client_scm2[i],
                 loss_fn, num_classes,
                 proxy_table=test_proxy,
                 task_name=task_name
@@ -1319,27 +1363,32 @@ def main():
                 client_FEs_round[i],
                 global_SS,
                 client_BEs_round[i],
+                global_den1,
+                global_den2,
                 global_exo1,
                 client_scm1[i],
                 global_exo2,
                 client_scm2[i],
                 num_classes=num_classes,
-                out_dir_root="Outputs/unet_mucald_test_preds_ablation_no_diffusion",
+                out_dir_root="Outputs/unet_mucald_test_preds_ablation_no_noise",
                 cid=i + 1
             )
 
             print(f"[Client {i + 1}] Computing detailed metrics (segmentation + latent reconstructions)...")
-            metrics = compute_full_metrics(test_loader,
-                                           client_FEs_round[i], global_SS, client_BEs_round[i],
-                                           global_exo1, client_scm1[i],
-                                           global_exo2, client_scm2[i],
-                                           num_classes=num_classes, device=DEVICE)
+            metrics = compute_full_metrics(
+                test_loader,
+                client_FEs_round[i], global_SS, client_BEs_round[i],
+                global_den1, global_den2,
+                global_exo1, client_scm1[i],
+                global_exo2, client_scm2[i],
+                num_classes=num_classes, device=DEVICE
+            )
 
             seg = metrics["seg"]
             recon1 = metrics["recon_x1"]
             recon2 = metrics["recon_x2"]
 
-            print(f"--- Client {i + 1} ({task_name}) Segmentation summary ---")
+            print(f"--- Client {i+1} ({task_name}) Segmentation summary ---")
             for c in range(num_classes):
                 print(f"Class {c}: IoU={seg['iou'][c]:.4f} | Dice={seg['dice'][c]:.4f} | "
                       f"P={seg['precision'][c]:.4f} R={seg['recall'][c]:.4f} F1={seg['f1'][c]:.4f} | "
@@ -1356,11 +1405,9 @@ def main():
                   f"mean Dice={mean_dice:.4f}, mean P={mean_P:.4f}, mean R={mean_R:.4f}, mean F1={mean_f1:.4f}, "
                   f"mean hd95={mean_HD95:.4f}, mean ASSD={mean_ASSD:.4f}")
 
-            print(f"--- Client {i + 1} ({task_name}) Reconstruction (latent) summary ---")
-            print(f"x1 (split1)   : MSE={recon1['mse']:.6f} | PSNR={recon1['psnr']:.4f} | SSIM={recon1[
-                'ssim']:.4f} | FID={recon1['fid']}")
-            print(f"x2 (split2)   : MSE={recon2['mse']:.6f} | PSNR={recon2['psnr']:.4f} | SSIM={recon2[
-                'ssim']:.4f} | FID={recon2['fid']}")
+            print(f"--- Client {i+1} ({task_name}) Reconstruction (latent) summary ---")
+            print(f"x1 (split1)   : MSE={recon1['mse']:.6f} | PSNR={recon1['psnr']:.4f} | SSIM={recon1['ssim']:.4f} | FID={recon1['fid']}")
+            print(f"x2 (split2)   : MSE={recon2['mse']:.6f} | PSNR={recon2['psnr']:.4f} | SSIM={recon2['ssim']:.4f} | FID={recon2['fid']}")
 
         plot_curves(r + 1)
 

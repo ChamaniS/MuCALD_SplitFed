@@ -99,7 +99,7 @@ If you find this project useful in your research, please cite our paper:
 ```bibtex
 @article{Anonymous_2026,
   title={MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation},
-  author={Anonymous},
-  journal={Proceeding of XXX},
+  author={Chamani Shiranthika, Hadi Hadizadeh, Parvaneh Saeedi},
+  Conference={IEEE International conference on Image Processing (ICIP 2026)},
   year={2026}
 }

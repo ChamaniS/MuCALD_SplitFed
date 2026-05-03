@@ -97,7 +97,7 @@ All the results we achieved are added to the "Results_Summary" folder in this re
 If you find this project useful in your research, please cite our paper:
 
 ```bibtex
-@article{Anonymous_2026,
+@article{Mucald_SplitFed_Shiranthika_2026,
   title={MuCALD-SplitFed: Causal-Latent Diffusion for Privacy-Preserving Multi-Task Split-Federated Medical Image Segmentation},
   author={Chamani Shiranthika, Hadi Hadizadeh, Parvaneh Saeedi},
   Conference={IEEE International conference on Image Processing (ICIP 2026)},
